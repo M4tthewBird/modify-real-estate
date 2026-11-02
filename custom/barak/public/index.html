@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barák | MODIFY real estate</title>
+  <meta name="description" content="Zkušební stránka: Gaussian splat model domu ve Spark a three.js, s výběrem části domu.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0b4b59">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }</script>
+</head>
+<body>
+  <main class="stage">
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <p class="loading" id="loading">Načítám 3D model…</p>
+    <p class="hint">Kolečkem přiblížíte, tažením otočíte, kliknutím vyberete část domu</p>
+    <aside class="panel" aria-label="Části domu">
+      <h1>Barák</h1>
+      <div class="floors" id="floors"></div>
+    </aside>
+    <p class="credit">3D model „barak“ od <a href="https://superspl.at/user/zevlman" target="_blank" rel="noopener">zevlman</a>, <a href="https://superspl.at/scene/e2cdc592" target="_blank" rel="noopener">superspl.at</a>, licence <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Zobrazeno pomocí <a href="https://sparkjs.dev" target="_blank" rel="noopener">Spark</a>.</p>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -34,6 +34,13 @@ Vlastní interaktivní stránka je na http://localhost:4180/stara-sladovna/ a je
 - `build-model.mjs`: vyrobí model z dat města Brna (CC BY) a půdorysů budov z OpenStreetMap (ODbL). Oba zdroje musí zůstat uvedené v patičce stránky
 - Stránka má `noindex` a formuláře nic neodesílají. Obojí je potřeba před spuštěním změnit
 
+## Barák
+
+Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zdroj v `custom/barak/public/`. Model `barak.sog` vykresluje [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180, které má stránka ve `vendor/` vlastní, Stará Sladovna dál běží na 0.170.
+
+- Části domu (přízemí, auto, střecha) jsou krabice v `PARTS` v `app.js`, změřené z dat modelu. Zvýraznění počítá shader ve Sparku, kliknutí chytají neviditelné krabice
+- Model je od autora zevlman ze superspl.at pod licencí CC BY 4.0, uvedení autora v patičce musí zůstat
+
 ## Spuštění
 
 Dvakrát klikni na `start.cmd`, nebo spusť `node tools/serve.mjs` a otevři http://localhost:4180.

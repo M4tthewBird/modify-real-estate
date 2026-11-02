@@ -1,0 +1,53 @@
+:root {
+  --petrol: #0b4b59;
+  --petrol-deep: #083a45;
+  --honey: #a47f50;
+  --honey-light: #e3c595;
+  --white: #fff;
+  --head: "Reem Kufi", sans-serif;
+  --body: "Work Sans", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--petrol-deep);
+  color: var(--white);
+  font: 400 15px/1.5 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-underline-offset: .2em; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.stage { position: relative; height: 100vh; height: 100dvh; overflow: hidden; }
+#scene { display: block; width: 100%; height: 100%; touch-action: none; }
+.stage.is-hovering #scene { cursor: pointer; }
+
+.loading, .hint, .credit { position: absolute; margin: 0; pointer-events: none; }
+.loading { inset: 50% auto auto 50%; translate: -50% -50%; font-size: 17px; }
+.hint { left: 16px; bottom: 44px; font-size: 13px; opacity: .75; }
+.credit { left: 16px; right: 16px; bottom: 14px; font-size: 12px; opacity: .7; pointer-events: auto; }
+
+.panel {
+  position: absolute; top: 16px; right: 16px; width: 220px;
+  padding: 18px; border-radius: 6px;
+  background: rgb(8 58 69 / 85%); backdrop-filter: blur(8px);
+}
+.panel h1 { margin: 0 0 12px; font: 500 26px/1.1 var(--head); text-transform: uppercase; }
+.floors { display: grid; gap: 6px; }
+.floors button {
+  padding: 9px 12px; border: 1px solid rgb(255 255 255 / 20%); border-radius: 4px;
+  background: none; text-align: left;
+}
+.floors button:hover { border-color: var(--honey-light); }
+.floors button[aria-pressed="true"] { background: var(--honey); border-color: var(--honey); }
+
+@media (max-width: 600px) {
+  .panel { top: auto; right: 16px; left: 16px; bottom: 72px; width: auto; padding: 12px; }
+  .panel h1 { display: none; }
+  .floors { grid-auto-flow: column; }
+  .floors button { text-align: center; }
+  .hint { display: none; }
+}
