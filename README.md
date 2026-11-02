@@ -41,6 +41,15 @@ Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zd
 - Části domu (přízemí, auto, střecha) jsou krabice v `PARTS` v `app.js`, změřené z dat modelu. Zvýraznění počítá shader ve Sparku, kliknutí chytají neviditelné krabice
 - Model je od autora zevlman ze superspl.at pod licencí CC BY 4.0, uvedení autora v patičce musí zůstat
 
+## GitHub Pages
+
+Po každém pushi do `main` workflow `.github/workflows/pages.yml` spustí `tools/pages.mjs` a publikuje naše stránky:
+
+- https://m4tthewbird.github.io/modify-real-estate/stara-sladovna/ (adresa webu bez cesty sem přesměruje)
+- https://m4tthewbird.github.io/modify-real-estate/barak/
+
+Kopie klientského webu v `site/` se nepublikuje. Z ní jsou v gitu jen obrázky, které tyto stránky používají (`git add -f`). Když stránka začne používat další obrázek ze `site/assets`, `node tools/pages.mjs` ho vypíše jako chybějící a je potřeba ho přidat stejně. Ostatní odkazy na `/` vedou na živý web modifyrealestate.cz. Lokálně v Git Bash spouštěj s `MSYS_NO_PATHCONV=1`, jinak se cesta `/modify-real-estate` přepíše na cestu Windows.
+
 ## Spuštění
 
 Dvakrát klikni na `start.cmd`, nebo spusť `node tools/serve.mjs` a otevři http://localhost:4180.

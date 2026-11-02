@@ -1,11 +1,11 @@
-# Publishes the Barák splat page (custom/barak/public) to GitHub Pages.
-# Only this page goes out; the copy of the client's site in site/ is not part of the repo and stays private.
+# Publishes our own pages to GitHub Pages: /stara-sladovna/ and /barak/, built by tools/pages.mjs.
+# The copy of the client's site in site/ is not in the repo; only the images these pages use are (git add -f).
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: [custom/barak/public/**, .github/workflows/pages.yml]
+    paths: [custom/*/public/**, site/assets/**, tools/pages.mjs, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -26,8 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        id: pages
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pages.mjs "${{ steps.pages.outputs.base_path }}"
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: custom/barak/public
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
