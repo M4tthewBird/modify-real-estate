@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stará Sladovna | MODIFY real estate</title>
+  <meta name="description" content="Kanceláře k pronájmu ve Staré Sladovně na Mendlově náměstí v Brně. Vyberte si patro a kancelář přímo v 3D modelu areálu.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0b4b59">
+  <link rel="icon" href="/assets/cdn.prod.website-files.com/66e431caa451ee223a6f7318/66f83f8292d54c5a94bf50d9_Favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://viewer.scanity.cz">
+  <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+  <header class="top">
+    <a href="/" class="top-logo" aria-label="MODIFY real estate, úvodní stránka">
+      <img src="/assets/cdn.prod.website-files.com/66e431caa451ee223a6f7318/66e81fc278e154217b2da59e_MODIFY_real_estae___primary_logo-ad762124.png" alt="" width="120">
+    </a>
+    <nav class="top-nav" aria-label="Hlavní">
+      <div class="theme-switch" role="group" aria-label="Denní doba v modelu">
+        <button type="button" data-theme-set="morning">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 4v2M4.9 7.9l1.4 1.4M19.1 7.9l-1.4 1.4M2 16h3M19 16h3M7.5 16a4.5 4.5 0 0 1 9 0M2 20h20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Ráno
+        </button>
+        <button type="button" data-theme-set="dusk">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          Večer
+        </button>
+      </div>
+      <a href="/aktualni-nabidka">Aktuální nabídka</a>
+      <a href="#kontakt">Kontakt</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-label="3D model areálu Stará Sladovna">
+      <div class="stage" id="stage">
+        <canvas id="scene" aria-hidden="true"></canvas>
+        <div class="pins" id="pins"></div>
+        <div class="tip" id="tip" hidden></div>
+        <p class="stage-hint" id="hint">Kolečkem přiblížíte, tažením otočíte</p>
+        <a class="more" href="#areal">Klikněte pro obecné informace
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="scanity-mark" href="https://scanity.cz" target="_blank" rel="noopener" aria-label="3D model vytvořil Scanity">
+          <img src="scanity_logo.svg" alt="" height="22"><span>Scanity</span>
+        </a>
+        <p class="stage-error" id="stageError" hidden>3D model se v tomto prohlížeči nepodařilo zobrazit. Kanceláře si můžete vybrat v seznamu.</p>
+      </div>
+      <aside class="panel" id="panel" aria-live="polite"></aside>
+    </section>
+
+    <section class="section" id="areal">
+      <div class="wrap">
+        <h2>Adresa na Mendlově náměstí</h2>
+        <p class="lead">Jeden z hlavních a nejživějších dopravních uzlů Brna, kterým denně projde na 80 tisíc lidí. Perfektní dostupnost MHD, napojení na hlavní tahy a kompletní občanská vybavenost pár kroků od kanceláře.</p>
+        <dl class="facts">
+          <div><dt>Kanceláře</dt><dd>Samostatné a nepropojené, připravené k okamžitému provozu. Na každém patře společná kuchyňka, sociální zařízení a rychlý internet.</dd></div>
+          <div><dt>Přímo v areálu</dt><dd>Pivovarská restaurace s letní zahrádkou a privátní gym pro jednotlivce.</dd></div>
+          <div><dt>Po domluvě</dt><dd>Vyhrazené parkování ve vnitrobloku, konferenční prostory a barokní sál pro vaše akce.</dd></div>
+        </dl>
+        <h3 class="plans-title">Půdorysy pater</h3>
+        <ul class="plan-links" id="planLinks"></ul>
+      </div>
+    </section>
+
+    <section class="section section-tint">
+      <div class="wrap">
+        <h2>Jak to tu vypadá</h2>
+        <div class="gallery" id="gallery"></div>
+      </div>
+    </section>
+
+    <section class="section section-dark" id="kontakt">
+      <div class="wrap contact">
+        <div>
+          <h2>Domluvte si prohlídku</h2>
+          <p class="contact-name" id="contactName"></p>
+          <p class="contact-links" id="contactLinks"></p>
+          <p class="contact-address">Pivovarská 960/2, Brno</p>
+        </div>
+        <form class="form" id="mainForm" novalidate></form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p>© MODIFY real estate s.r.o.</p>
+      <p>3D model budov: <a href="https://data.brno.cz/">Statutární město Brno, data.brno.cz</a> (CC BY), upraveno. Mapové podklady: © přispěvatelé <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. 3D prohlídka: Scanity.</p>
+    </div>
+  </footer>
+
+  <dialog class="tour" id="tour" aria-labelledby="tourTitle">
+    <div class="tour-frame" id="tourFrame"></div>
+    <div class="tour-cover" id="tourCover">
+      <img id="tourPoster" src="gym/04-gym.webp" alt="">
+      <div class="tour-status">
+        <h2 id="tourTitle" tabindex="-1" autofocus></h2>
+        <div class="tour-bar" aria-hidden="true"><span></span></div>
+        <p id="tourNote" role="status">Vstupujeme dovnitř</p>
+      </div>
+    </div>
+    <!-- at the bottom, because the viewer keeps our logo in the top corner and its controls in the others -->
+    <button type="button" class="tour-close" id="tourClose">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Zpět na model
+    </button>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

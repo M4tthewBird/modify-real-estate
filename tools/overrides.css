@@ -1,0 +1,6 @@
+/* Our changes to the copied site. Webflow's own stylesheet is replaced on every mirror run; this file is not. */
+
+/* Webflow's ._16-regular sets align-self: flex-end, which pushes short hero text to the right. */
+.hero-content > ._16-regular {
+  align-self: flex-start;
+}

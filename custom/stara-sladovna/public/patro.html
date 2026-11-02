@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Půdorys patra | Stará Sladovna | MODIFY real estate</title>
+  <meta name="description" content="Půdorys patra ve Staré Sladovně na Mendlově náměstí v Brně.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0b4b59">
+  <link rel="icon" href="/assets/cdn.prod.website-files.com/66e431caa451ee223a6f7318/66f83f8292d54c5a94bf50d9_Favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="floor-page">
+  <header class="page-top">
+    <a href="/" aria-label="MODIFY real estate, úvodní stránka">
+      <img src="/assets/cdn.prod.website-files.com/66e431caa451ee223a6f7318/66e81fc278e154217b2da59e_MODIFY_real_estae___primary_logo-ad762124.png" alt="" width="104">
+    </a>
+    <a class="page-back" id="backLink" href="./">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Zpět na 3D model
+    </a>
+  </header>
+
+  <main class="wrap floor-main">
+    <nav class="floor-tabs" id="floorTabs" aria-label="Patra"></nav>
+    <h1 id="floorTitle"></h1>
+    <p class="lead" id="floorLead"></p>
+    <dl class="floor-facts" id="floorFacts"></dl>
+    <div class="view-switch" id="viewSwitch" role="group" aria-label="Zobrazení půdorysu" hidden></div>
+    <button type="button" class="plan-open" id="planOpen" aria-label="Otevřít půdorys ve velkém formátu">
+      <span class="plan-frame" id="planFrame"></span>
+      <span class="plan-open-label">Otevřít ve velkém formátu</span>
+    </button>
+    <p class="sample-note" id="sampleNote" hidden>Čísla kanceláří, plochy a obsazenost jsou zatím ukázkové. Nahradí je seznam od makléře.</p>
+    <table class="room-table" id="roomTable" hidden>
+      <thead><tr><th scope="col">Kancelář</th><th scope="col">Plocha</th><th scope="col">Stav</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="floor-cta"><a class="btn" href="./#kontakt">Domluvit si prohlídku</a></p>
+  </main>
+
+  <dialog class="plan-large" id="planLarge" aria-label="Půdorys ve velkém formátu">
+    <div class="plan-large-scroll" id="planLargeScroll"></div>
+    <button type="button" class="tour-close" id="planLargeClose">Zavřít</button>
+  </dialog>
+
+  <script type="module" src="patro.js"></script>
+</body>
+</html>
