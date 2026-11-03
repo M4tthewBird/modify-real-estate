@@ -1,4 +1,4 @@
-# Publishes our own pages to GitHub Pages: /stara-sladovna/ and /barak/, built by tools/pages.mjs.
+# Publishes our own pages to GitHub Pages: /stara-sladovna/, /stara-sladovna-gym-threejs/ and /barak/, built by tools/pages.mjs.
 # The copy of the client's site in site/ is not in the repo; only the images these pages use are (git add -f).
 name: Pages
 

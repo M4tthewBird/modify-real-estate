@@ -34,9 +34,18 @@ Vlastní interaktivní stránka je na http://localhost:4180/stara-sladovna/ a je
 - `build-model.mjs`: vyrobí model z dat města Brna (CC BY) a půdorysů budov z OpenStreetMap (ODbL). Oba zdroje musí zůstat uvedené v patičce stránky
 - Stránka má `noindex` a formuláře nic neodesílají. Obojí je potřeba před spuštěním změnit
 
+## Stará Sladovna, gym ve 3D
+
+Druhá verze stránky na http://localhost:4180/stara-sladovna-gym-threejs/, zdroj v `custom/stara-sladovna-gym-threejs/`. Je to kopie Staré Sladovny (stav ze značky `stara-sladovna-v1`), jen privátní gym je místo odkazu do vieweru náš 3D sken (gaussian splaty) přímo v modelu. Původní stránka v `custom/stara-sladovna/` zůstává beze změny; úpravy, které mají platit pro obě, je potřeba udělat v obou.
+
+- Po otevření 1. NP vyroste gym na desce přízemí bez stropu. Tlačítkem „Vstoupit dovnitř“, kliknutím na podlahu nebo na místnost v půdorysu se do něj vejde, tažením se rozhlíží a v půdorysu je vidět, kde návštěvník stojí. Plný viewer zůstává jako odkaz „Celá prohlídka ve vieweru“
+- Vykresluje ho [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180 ve `public/vendor/`. Spark a sken se stahují, až když někdo gym otevře. Telefon dostane `gym-lite.sog` (750 tisíc splatů, 11,6 MB), počítač `gym.sog` (1,7 milionu, 27 MB)
+- Kde gym v přízemí stojí, určují `GYM.splat.at` a `turn` v `public/data.js`. Zatím je to odhad, skutečné místo je potřeba potvrdit
+- `build-gym.mjs <sken.sog>`: ze skenu ze Scanity Studia vyrobí oba soubory v `public/gym/`, otočené do metrů půdorysu `gym/plan.json` a oříznuté podle obrysu gymu. Zdrojový sken je ve `Webovky/Podpurne soubory/` a do gitu nepatří
+
 ## Barák
 
-Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zdroj v `custom/barak/public/`. Model `barak.sog` vykresluje [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180, které má stránka ve `vendor/` vlastní, Stará Sladovna dál běží na 0.170.
+Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zdroj v `custom/barak/public/`. Model `barak.sog` vykresluje [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180, které má stránka ve `vendor/` vlastní. Stará Sladovna běží na 0.170, její verze s gymem ve 3D na 0.180.
 
 - Části domu (přízemí, auto, střecha) jsou krabice v `PARTS` v `app.js`, změřené z dat modelu. Zvýraznění počítá shader ve Sparku, kliknutí chytají neviditelné krabice
 - Model je od autora zevlman ze superspl.at pod licencí CC BY 4.0, uvedení autora v patičce musí zůstat
@@ -46,6 +55,7 @@ Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zd
 Po každém pushi do `main` workflow `.github/workflows/pages.yml` spustí `tools/pages.mjs` a publikuje naše stránky:
 
 - https://m4tthewbird.github.io/modify-real-estate/stara-sladovna/ (adresa webu bez cesty sem přesměruje)
+- https://m4tthewbird.github.io/modify-real-estate/stara-sladovna-gym-threejs/
 - https://m4tthewbird.github.io/modify-real-estate/barak/
 
 Kopie klientského webu v `site/` se nepublikuje. Z ní jsou v gitu jen obrázky, které tyto stránky používají (`git add -f`). Když stránka začne používat další obrázek ze `site/assets`, `node tools/pages.mjs` ho vypíše jako chybějící a je potřeba ho přidat stejně. Ostatní odkazy na `/` vedou na živý web modifyrealestate.cz. Lokálně v Git Bash spouštěj s `MSYS_NO_PATHCONV=1`, jinak se cesta `/modify-real-estate` přepíše na cestu Windows.

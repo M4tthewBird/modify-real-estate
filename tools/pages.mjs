@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, '_site');
-const PAGES = ['barak', 'stara-sladovna'];
+const PAGES = ['barak', 'stara-sladovna', 'stara-sladovna-gym-threejs'];
 const LIVE = 'https://modifyrealestate.cz';
 const base = (process.argv[2] ?? '').replace(/\/$/, '');
 
@@ -47,6 +47,6 @@ if (missing.length) {
     process.exit(1);
 }
 // the address of the Pages site itself opens the offices' page
-await writeFile(join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=stara-sladovna/"><title>Stará Sladovna</title><a href="stara-sladovna/">Stará Sladovna</a> · <a href="barak/">Barák</a>
+await writeFile(join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=stara-sladovna/"><title>Stará Sladovna</title><a href="stara-sladovna/">Stará Sladovna</a> · <a href="stara-sladovna-gym-threejs/">Stará Sladovna, gym ve 3D</a> · <a href="barak/">Barák</a>
 `);
 console.log(`_site: ${PAGES.join(', ')}, ${assets.size} asset references`);
