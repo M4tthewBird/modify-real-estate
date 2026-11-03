@@ -17,17 +17,15 @@
 </head>
 <body>
   <header class="top">
-    <a href="/" class="top-logo" aria-label="MODIFY real estate, úvodní stránka">
-      <img src="/assets/cdn.prod.website-files.com/66e431caa451ee223a6f7318/66e81fc278e154217b2da59e_MODIFY_real_estae___primary_logo-ad762124.png" alt="" width="120">
-    </a>
+    <a href="/" class="top-logo logo" aria-label="MODIFY real estate, úvodní stránka"><b>MODIFY</b><small>real estate</small></a>
     <nav class="top-nav" aria-label="Hlavní">
       <div class="theme-switch" role="group" aria-label="Denní doba v modelu">
         <button type="button" data-theme-set="morning">
-          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 4v2M4.9 7.9l1.4 1.4M19.1 7.9l-1.4 1.4M2 16h3M19 16h3M7.5 16a4.5 4.5 0 0 1 9 0M2 20h20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 4v2M4.9 7.9l1.4 1.4M19.1 7.9l-1.4 1.4M2 16h3M19 16h3M7.5 16a4.5 4.5 0 0 1 9 0M2 20h20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>
           Ráno
         </button>
         <button type="button" data-theme-set="dusk">
-          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="miter"/></svg>
           Večer
         </button>
       </div>
@@ -40,15 +38,18 @@
     <section class="hero" aria-label="3D model areálu Stará Sladovna">
       <div class="stage" id="stage">
         <canvas id="scene" aria-hidden="true"></canvas>
+        <nav class="crumbs" id="crumbs" aria-label="Kde v modelu jste" hidden></nav>
         <div class="pins" id="pins"></div>
         <div class="tip" id="tip" hidden></div>
-        <p class="stage-hint" id="hint">Kolečkem přiblížíte, tažením otočíte</p>
         <a class="more" href="#areal">Klikněte pro obecné informace
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter"/></svg>
         </a>
+        <div class="stage-foot">
+          <p class="stage-hint" id="hint">Kolečkem přiblížíte, tažením otočíte</p>
         <a class="scanity-mark" href="https://scanity.cz" target="_blank" rel="noopener" aria-label="3D model vytvořil Scanity">
           <img src="scanity_logo.svg" alt="" height="22"><span>Scanity</span>
         </a>
+        </div>
         <p class="stage-error" id="stageError" hidden>3D model se v tomto prohlížeči nepodařilo zobrazit. Kanceláře si můžete vybrat v seznamu.</p>
       </div>
       <aside class="panel" id="panel" aria-live="polite"></aside>
@@ -56,6 +57,7 @@
 
     <section class="section" id="areal">
       <div class="wrap">
+        <p class="kicker">Lokalita a zázemí</p>
         <h2>Adresa na Mendlově náměstí</h2>
         <p class="lead">Jeden z hlavních a nejživějších dopravních uzlů Brna, kterým denně projde na 80 tisíc lidí. Perfektní dostupnost MHD, napojení na hlavní tahy a kompletní občanská vybavenost pár kroků od kanceláře.</p>
         <dl class="facts">
@@ -70,14 +72,22 @@
 
     <section class="section section-tint">
       <div class="wrap">
+        <p class="kicker">Fotogalerie</p>
         <h2>Jak to tu vypadá</h2>
         <div class="gallery" id="gallery"></div>
       </div>
     </section>
 
     <section class="section section-dark" id="kontakt">
+      <svg class="gold-lines" viewBox="0 0 600 600" aria-hidden="true" preserveAspectRatio="xMaxYMid slice">
+        <defs><linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#a47f50"/><stop offset=".5" stop-color="#d2c394"/><stop offset="1" stop-color="#a47f50"/></linearGradient></defs>
+        <g fill="none" stroke="url(#gold)" stroke-width="1">
+          <path d="M600 40C430 120 330 300 300 600"/><path d="M600 70C440 150 350 320 330 600"/><path d="M600 100C450 180 370 340 360 600"/><path d="M600 130C460 210 390 360 390 600"/><path d="M600 160C470 240 410 380 420 600"/><path d="M600 190C480 270 430 400 450 600"/><path d="M600 220C490 300 450 420 480 600"/><path d="M600 250C500 330 470 440 510 600"/><path d="M600 280C510 360 490 460 540 600"/>
+        </g>
+      </svg>
       <div class="wrap contact">
         <div>
+          <p class="kicker">Kontakt</p>
           <h2>Domluvte si prohlídku</h2>
           <p class="contact-name" id="contactName"></p>
           <p class="contact-links" id="contactLinks"></p>
@@ -107,7 +117,7 @@
     </div>
     <!-- at the bottom, because the viewer keeps our logo in the top corner and its controls in the others -->
     <button type="button" class="tour-close" id="tourClose">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter"/></svg>
       Zpět na model
     </button>
   </dialog>

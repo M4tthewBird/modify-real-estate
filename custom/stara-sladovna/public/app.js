@@ -18,6 +18,9 @@ const ICONS = {
     back: 'M19 12H5M11 6l-6 6 6 6',
     up: 'M12 19V5M6 11l6-6 6 6',
     down: 'M12 5v14M6 13l6 6 6-6',
+    plan: 'M3 4h18v16H3zM3 12h9M12 4v8M16 12v8',
+    expand: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
+    minus: 'M6 12h12',
 };
 const icon = (name, size = 16) => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -29,9 +32,9 @@ const icon = (name, size = 16) => {
     path.setAttribute('d', ICONS[name]);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', '2');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('stroke-width', '1.6');
+    path.setAttribute('stroke-linecap', 'square');
+    path.setAttribute('stroke-linejoin', 'miter');
     svg.append(path);
     return svg;
 };
@@ -56,7 +59,7 @@ const COLORS = {
     parasol: 0x2c6b52,
     parasolLight: 0xece4cf,
     plate: 0xe9e3d6,
-    free: 0xe3c595,
+    free: 0xd2c394, // champagne gold, from the brand palette
     taken: 0x0b4b59,
     gymWall: 0x0b4b59,
 };
@@ -118,7 +121,10 @@ const SILL = 0.8;
 const OPEN_FLOOR_MAX_POLAR = 1.05; // an opened floor reads from above; lower, its walls hide the rooms
 const MAX_POLAR = 1.42;
 const OPEN_MS = 1500;
-const CLOSE_MS = 750;
+const CLOSE_MS = 700; // the building grows back from the cut, it does not fall from the sky
+const FLOOR_SWITCH_MS = 950; // one storey away or back
+const SWITCH_LIFT = 16; // how far the storey above flies off
+const ROOF_CLEAR = 12; // above the eave, so the sweep that closes a floor passes the whole roof
 const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1313, 735], [1313, 925], [945, 925], [945, 690], [125, 690]];
 
 let manifest = null;
@@ -144,7 +150,7 @@ const shared = { uLevel: { value: 4 }, uLevelOn: { value: 0 }, uFloorBase: { val
 const levelTarget = { level: 4, on: 0 };
 const lowPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e4);
 const highPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e4);
-const reveal = { t: 0, from: 0, to: 0, start: 0, ms: 1, level: null, pending: null, high: [], plate: null, group: null };
+const reveal = { level: null, cut: 0, high: [], plate: null, ceiling: null };
 
 const floorAt = (level) => FLOORS.find((f) => f.level === level);
 
@@ -152,11 +158,75 @@ const floorAt = (level) => FLOORS.find((f) => f.level === level);
 
 const panel = $('panel');
 
-const backButton = (label, onClick) => {
-    const b = el('button', { type: 'button', className: 'back' }, icon('back'), label);
-    b.addEventListener('click', onClick);
-    return b;
+/* ---------- where am I: one trail at the top of the model, with a plain way back ---------- */
+
+const crumbsNode = $('crumbs');
+const trail = () => {
+    const items = [{ label: 'Celý areál', go: () => goTo('overview') }];
+    if (mode === 'floors' || mode === 'floor' || mode === 'gym') items.push({ label: 'Kanceláře', go: () => goTo('floors') });
+    if (mode === 'floor') items.push({ label: floorAt(openLevel).label, go: () => pickRoom(null) });
+    if (mode === 'floor' && pickedRoom) items.push({ label: `Kancelář ${pickedRoom.id}` });
+    else if (mode === 'gym') items.push({ label: `1. NP, ${GYM.title}` });
+    else if (mode !== 'floors' && mode !== 'floor' && ZONES[mode]) items.push({ label: ZONES[mode].title });
+    return items;
 };
+const goUp = () => {
+    const steps = trail();
+    if (steps.length > 1) steps[steps.length - 2].go();
+};
+const renderCrumbs = () => {
+    const steps = trail();
+    crumbsNode.hidden = steps.length < 2;
+    if (steps.length < 2) {
+        crumbsNode.replaceChildren();
+        return;
+    }
+    const back = el('button', { type: 'button', className: 'crumb-back' }, icon('back'), 'Zpět');
+    back.setAttribute('aria-label', `Zpět: ${steps[steps.length - 2].label}`);
+    back.addEventListener('click', goUp);
+    const list = el('ol', { className: 'crumb-trail' });
+    steps.forEach((step, i) => {
+        const last = i === steps.length - 1;
+        const node = last ? el('span', { textContent: step.label }) : el('button', { type: 'button', textContent: step.label });
+        if (last) node.setAttribute('aria-current', 'page');
+        else node.addEventListener('click', step.go);
+        list.append(el('li', {}, node));
+    });
+    crumbsNode.replaceChildren(back, list);
+};
+
+/* ---------- the browser's own back button walks the same trail ---------- */
+
+const navHash = () => {
+    if (mode === 'floors') return '#patra';
+    if (mode === 'floor') return `#patro-${openLevel}${pickedRoom ? `-${pickedRoom.id}` : ''}`;
+    if (mode === 'gym') return '#gym';
+    return ZONES[mode] ? `#${mode}` : '';
+};
+const remember = () => {
+    const hash = navHash();
+    if (hash === location.hash || (!hash && !location.hash)) return;
+    history.pushState(null, '', hash || location.pathname + location.search);
+};
+/** Opens the view a hash names; other hashes (#kontakt, #areal) are the page's own anchors and change nothing. */
+const route = (hash) => {
+    const floor = /^#patro-([1-4])(?:-(.+))?$/.exec(hash);
+    if (!hash || hash === '#') {
+        if (mode !== 'overview') goTo('overview', false);
+    } else if (hash === '#patra') {
+        if (mode !== 'floors') goTo('floors', false);
+    } else if (hash === '#gym') {
+        if (mode !== 'gym') openFloor(1, false);
+    } else if (floor) {
+        const level = +floor[1];
+        if (mode !== 'floor' || openLevel !== level) openFloor(level, false);
+        const room = floor[2] ? floorAt(level).rooms.find((r) => r.id === floor[2]) : null;
+        if ((room ?? null) !== pickedRoom) pickRoom(room ?? null, false);
+    } else if (ZONES[hash.slice(1)] && hash !== '#kancelare') {
+        if (mode !== hash.slice(1)) goTo(hash.slice(1), false);
+    }
+};
+window.addEventListener('popstate', () => route(location.hash));
 
 const renderOverviewPanel = () => {
     const list = el('ul', { className: 'zone-list' });
@@ -196,7 +266,7 @@ const setActiveLevel = (level) => {
     needsRender = true;
 };
 
-const openFloor = (level) => {
+const openFloor = (level, push = true) => {
     // an unavailable floor only lights up, so its row says why it does not open
     if (floorAt(level).unavailable) {
         setActiveLevel(level);
@@ -204,7 +274,7 @@ const openFloor = (level) => {
     }
     activeLevel = level;
     levelTarget.level = level;
-    goTo(floorAt(level).gym ? 'gym' : 'floor');
+    goTo(floorAt(level).gym ? 'gym' : 'floor', push);
 };
 
 const floorComment = (floor) => {
@@ -229,7 +299,7 @@ const renderFloorsPanel = () => {
         rows.append(el('li', {}, b));
     }
     dialNode = el('div', {}, el('h1', { textContent: 'Vyberte patro' }), rows);
-    panel.replaceChildren(backButton('Celý areál', () => goTo('overview')), dialNode);
+    panel.replaceChildren(dialNode);
     updateDial();
 };
 
@@ -277,7 +347,7 @@ const renderFloorPanel = () => {
     const down = el('button', { type: 'button', ariaLabel: 'O patro níž' }, icon('down'));
     up.addEventListener('click', () => stepFloor(1));
     down.addEventListener('click', () => stepFloor(-1));
-    const head = [backButton('Všechna patra', () => goTo('floors')), el('div', { className: 'floor-step' }, el('h1', { textContent: floor.label }), up, down)];
+    const head = [el('div', { className: 'floor-step' }, el('h1', { textContent: floor.label }), up, down)];
 
     if (pickedRoom) {
         const room = pickedRoom;
@@ -286,7 +356,7 @@ const renderFloorPanel = () => {
             el('dt', { textContent: 'Plocha' }), el('dd', { textContent: `přibližně ${String(room.area).replace('.', ',')} m²` }),
             el('dt', { textContent: 'Cena' }), el('dd', { textContent: 'na vyžádání' }),
             el('dt', { textContent: 'Stav' }), el('dd', { textContent: free ? 'Volno' : 'Obsazeno' }));
-        const children = [backButton(`Všechny kanceláře, ${floor.label}`, () => pickRoom(null)), el('h1', { textContent: `Kancelář ${room.id}` }), facts];
+        const children = [el('h1', { textContent: `Kancelář ${room.id}` }), facts];
         if (SAMPLE_DATA) children.push(el('p', { className: 'sample', textContent: 'Ukázková data, nahradí je seznam od makléře.' }));
         if (room.tour) {
             const enter = el('button', { type: 'button', className: 'btn', textContent: 'Podívat se dovnitř ve 3D' });
@@ -332,6 +402,103 @@ const setGymPhoto = (index) => {
 
 const removeGymSheet = () => document.querySelector('.gym-sheet')?.remove();
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let planCard = null;
+/** The model sits in the free space: right of the panel, and left of the floor plan when one is open beside it. */
+const frameView = () => {
+    if (!camera) return;
+    const stage = $('stage');
+    const width = stage.clientWidth;
+    const height = stage.clientHeight;
+    let shift = 0;
+    if (!isNarrow()) {
+        const origin = stage.getBoundingClientRect().left;
+        const left = panel.getBoundingClientRect().right - origin;
+        const card = planCard && !planCard.classList.contains('is-collapsed') ? planCard.getBoundingClientRect().left - origin : width;
+        shift = -((left + card) / 2 - width / 2);
+    }
+    camera.setViewOffset(width, height, shift, 0, width, height);
+    camera.updateProjectionMatrix();
+    needsRender = true;
+};
+
+const removePlanCard = () => {
+    planCard?.remove();
+    planCard = null;
+    frameView();
+};
+/** The client's own floor plan of the opened floor: its rooms answer to the same hover and click as the model's. */
+const showPlanCard = (floor) => {
+    if (planCard?.dataset.level === String(floor.level)) return;
+    removePlanCard();
+    if (!floor.plan) return;
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 5 1400 990');
+    svg.setAttribute('role', 'group');
+    svg.setAttribute('aria-label', `Půdorys, ${floor.label}`);
+    const image = document.createElementNS(SVG_NS, 'image');
+    for (const [k, v] of Object.entries({ href: floor.plan, x: 0, y: 5, width: 1400, height: 990 })) image.setAttribute(k, v);
+    svg.append(image);
+    for (const room of floor.rooms) {
+        const shape = document.createElementNS(SVG_NS, 'polygon');
+        shape.setAttribute('points', room.shape.map((p) => p.join(',')).join(' '));
+        shape.setAttribute('class', `plan-room is-${room.status}`);
+        shape.setAttribute('tabindex', '0');
+        shape.setAttribute('role', 'button');
+        shape.setAttribute('aria-label', `Kancelář ${room.id}, ${room.status}`);
+        shape.dataset.room = room.id;
+        shape.addEventListener('click', () => pickRoom(room));
+        shape.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                pickRoom(room);
+            }
+        });
+        shape.addEventListener('pointerenter', () => setHover(`room-${room.id}`));
+        shape.addEventListener('pointerleave', () => setHover(null));
+        svg.append(shape);
+    }
+    for (const room of floor.rooms) {
+        const cx = room.shape.reduce((sum, p) => sum + p[0], 0) / room.shape.length;
+        const cy = room.shape.reduce((sum, p) => sum + p[1], 0) / room.shape.length;
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('x', cx);
+        label.setAttribute('y', cy);
+        label.setAttribute('class', `plan-label is-${room.status}`);
+        label.dataset.room = room.id;
+        label.textContent = room.id;
+        svg.append(label);
+    }
+    const toggle = el('button', { type: 'button', className: 'plan-card-icon' }, icon('minus'));
+    toggle.setAttribute('aria-label', 'Skrýt půdorys');
+    toggle.addEventListener('click', () => {
+        const hidden = planCard.classList.toggle('is-collapsed');
+        toggle.replaceChildren(icon(hidden ? 'plan' : 'minus'));
+        toggle.setAttribute('aria-label', hidden ? 'Ukázat půdorys' : 'Skrýt půdorys');
+        frameView();
+    });
+    const large = el('a', { className: 'plan-card-icon', href: floorPage(floor.level) }, icon('expand'));
+    large.setAttribute('aria-label', 'Půdorys ve velkém formátu');
+    large.title = 'Velký formát';
+    const free = floor.rooms.filter((r) => r.status === 'volno').length;
+    planCard = el('section', { className: 'plan-card' },
+        el('header', { className: 'plan-card-head' },
+            el('div', {}, el('p', { textContent: 'Půdorys' }), el('h2', { textContent: floor.label })),
+            el('span', { className: 'plan-card-count', textContent: `${free} volné` }),
+            large, toggle),
+        el('div', { className: 'plan-card-body' }, svg),
+        el('footer', { className: 'plan-card-foot' },
+            el('span', { className: 'plan-key' }, el('i', { className: 'key-free' }), 'Volno'),
+            el('span', { className: 'plan-key' }, el('i', { className: 'key-taken' }), 'Obsazeno'),
+            el('span', { className: 'plan-card-status', role: 'status' })));
+    planCard.setAttribute('aria-label', `Půdorys, ${floor.label}`);
+    planCard.dataset.level = floor.level;
+    // a wide screen has room beside the model; a narrow one shows the plan between the model and the panel
+    if (isNarrow()) $('stage').after(planCard);
+    else $('stage').append(planCard);
+    frameView();
+};
+
 const renderGymPanel = () => {
     const thumbs = el('div', { className: 'thumbs' });
     GYM.rooms.forEach((room, i) => {
@@ -343,7 +510,6 @@ const renderGymPanel = () => {
     const enter = el('button', { type: 'button', className: 'btn', textContent: 'Vstoupit do 3D prohlídky' });
     enter.addEventListener('click', () => openTour(GYM.tour));
     const children = [
-        backButton('Všechna patra', () => goTo('floors')),
         el('h1', { textContent: GYM.title }),
         el('p', { textContent: GYM.text }),
         el('img', { className: 'panel-photo', alt: '' }),
@@ -366,7 +532,7 @@ const renderZonePanel = (key) => {
     const zone = ZONES[key];
     const children = [];
     if (zone.photo) children.push(el('img', { className: 'panel-photo', src: zone.photo, alt: zone.title, loading: 'lazy' }));
-    children.push(backButton('Celý areál', () => goTo('overview')), el('h1', { textContent: zone.title }), el('p', { textContent: zone.text }));
+    children.push(el('h1', { textContent: zone.title }), el('p', { textContent: zone.text }));
     if (key === 'doprava' && manifest) children.push(el('p', { textContent: `Od nejbližší zastávky je to ke vchodu přibližně ${manifest.walk.metres} m, asi ${manifest.walk.minutes} minuty pěšky.` }));
     const actions = el('div', { className: 'panel-actions' }, el('a', { className: 'btn', href: '#kontakt', textContent: 'Zeptat se makléře' }));
     if (zone.link) actions.append(el('a', { className: 'text-link', href: zone.link.href, textContent: zone.link.label, target: '_blank', rel: 'noopener' }));
@@ -449,7 +615,7 @@ const viewOf = (name) => {
     if (name === 'floors' || name === 'gym') return { pos: [cx + dx * 62 + rx * 26, 17, cz + dz * 62 + rz * 26], target: [cx, 8.5, cz] };
     // an open floor: from the side of the plan's bottom edge, so the plan reads upright, below the lifted roof
     const y = floorBase(openLevel ?? activeLevel);
-    return { pos: [cx + dx * 30, y + 36, cz + dz * 30], target: [cx, y + 4, cz] };
+    return { pos: [cx + dx * 36, y + 43, cz + dz * 36], target: [cx, y + 3, cz] };
 };
 
 const NARROW_DISTANCE = 0.9;
@@ -594,9 +760,10 @@ vec3 surfaceColor(vec4 f) {
         // the tower's small gable: the tower's own render, so it does not stand out as a box, one window on its front
         col = srgb(240.0, 232.0, 212.0);
         if (rows > 0.5) {
-            vec2 box = vec2(0.13, 0.15);
-            col = mix(col, trim, boxOf(uv, vec2(0.5, 0.56), box + vec2(0.03, 0.03), fw * 1.5));
-            col = mix(col, PANE, boxOf(uv, vec2(0.5, 0.56), box, fw * 1.5));
+            // one small window in the middle of the gable, as on the aerial photo
+            vec2 box = vec2(0.1, 0.13);
+            col = mix(col, srgb(214.0, 200.0, 168.0), boxOf(uv, vec2(0.5, 0.6), box + vec2(0.025, 0.02), fw * 1.5));
+            col = mix(col, PANE, boxOf(uv, vec2(0.5, 0.6), box, fw * 1.5));
         }
     } else {
         // the ornate corner building: rusticated base, tall wooden windows
@@ -1420,13 +1587,12 @@ const boxMatrixAt = (p, y) => {
     return new THREE.Matrix4().makeTranslation(fx, y, fz);
 };
 
+/** One floor's rooms in 3D. The walls and furniture sit in `inner`, which grows out of the floor. */
 const buildPlate = (floor) => {
-    if (reveal.plate) scene.remove(reveal.plate);
-    clearRoomPins();
     const y = floorBase(floor.level);
     const group = new THREE.Group();
     group.position.y = y;
-    const inner = new THREE.Group(); // the walls and furniture rise out of the floor as the storey lifts
+    const inner = new THREE.Group();
     group.add(inner);
     const plate = new THREE.Mesh(planGeometry(PLAN_OUTLINE_PX, 0.06), material(0xc7c2b6));
     plate.receiveShadow = true;
@@ -1452,18 +1618,34 @@ const buildPlate = (floor) => {
         tint.userData = { room, key: `room-${room.id}`, base: free ? 0.3 : 0.34 };
         group.add(tint);
     }
-    // the underside of the storeys that lift off
-    const ceiling = new THREE.Mesh(planGeometry(PLAN_OUTLINE_PX, 0), material(0xdcd6c9));
-    ceiling.castShadow = true;
-    group.add(ceiling);
-    scene.add(group);
-    reveal.plate = group;
-    reveal.group = inner;
-    reveal.ceiling = ceiling;
+    // every material may fade, so all are transparent from the start; at full opacity they draw as before
+    group.traverse((node) => {
+        if (!node.material) return;
+        node.material = node.material.clone();
+        node.material.transparent = true;
+        node.material.userData.base = node.material.opacity;
+    });
+    group.userData.inner = inner;
     inner.scale.y = 0.001;
+    scene.add(group);
+    return group;
+};
+
+const fadePlate = (group, amount) => {
+    group.traverse((node) => {
+        if (!node.material) return;
+        node.material.opacity = node.material.userData.base * amount;
+    });
+    group.visible = amount > 0.01;
+};
+
+const dropPlate = (group) => {
+    scene.remove(group);
+    group.traverse((node) => node.material?.dispose());
 };
 
 const buildRoomPins = (floor) => {
+    clearRoomPins();
     const y = floorBase(floor.level);
     for (const room of floor.rooms) {
         const cx = room.shape.reduce((s, p) => s + p[0], 0) / room.shape.length;
@@ -1474,85 +1656,141 @@ const buildRoomPins = (floor) => {
     updatePinSet();
 };
 
-const tween = (to, ms) => {
-    reveal.from = reveal.t;
-    reveal.to = to;
-    reveal.ms = reducedMotion ? 1 : ms * Math.max(0.25, Math.abs(to - reveal.t));
-    reveal.start = performance.now();
-};
-
-const beginOpen = (level) => {
-    reveal.level = level;
-    openLevel = level;
-    const cut = floorBase(level) + 0.04;
-    lowPlane.constant = cut;
-    reveal.cut = cut;
-    reveal.high.forEach((mesh) => { mesh.visible = true; });
-    buildPlate(floorAt(level));
-    buildRoomPins(floorAt(level));
-    applyColors();
-    tween(1, OPEN_MS);
-};
-
-const openReveal = (level) => {
-    openLevel = level;
-    if (reveal.t > 0.001 && reveal.level !== level) {
-        // another floor is open: close it first, briefly, and go on from there
-        clearRoomPins();
-        reveal.pending = level;
-        tween(0, CLOSE_MS * 0.7);
-    } else {
-        reveal.pending = null;
-        beginOpen(level);
-    }
-};
-
-const closeReveal = () => {
-    reveal.pending = null;
-    clearRoomPins();
-    tween(0, CLOSE_MS);
-};
-
+/* small timeline: each animation runs once with an eased 0..1, and finishing early jumps to its end */
 const smooth = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-const stepReveal = (now) => {
-    if (reveal.t === reveal.to) return;
-    const p = Math.min(1, (now - reveal.start) / reveal.ms);
-    reveal.t = reveal.from + (reveal.to - reveal.from) * smooth(p);
-    if (p === 1) reveal.t = reveal.to;
-    const lift = LIFT * reveal.t;
-    highPlane.constant = -(reveal.cut + lift);
-    // once they are out of sight, the storeys above stay hidden, so they cannot hang over the opened floor
-    const gone = reveal.t === 1;
-    reveal.high.forEach((mesh) => {
-        mesh.position.y = lift;
-        mesh.visible = !gone;
-    });
-    if (reveal.group) {
-        reveal.group.scale.y = Math.max(0.001, reveal.t);
-        reveal.ceiling.position.y = lift - 0.03;
-        reveal.ceiling.visible = !gone;
+const animations = new Set();
+const animate = (ms, step, done) => {
+    animations.add({ start: performance.now(), ms: reducedMotion ? 1 : ms, step, done });
+};
+const runAnimations = (now) => {
+    for (const anim of [...animations]) {
+        const p = Math.min(1, (now - anim.start) / anim.ms);
+        anim.step(smooth(p));
+        if (p === 1) {
+            animations.delete(anim);
+            anim.done?.();
+        }
     }
-    needsRender = true;
-    if (p === 1 && reveal.t === 0) {
-        if (reveal.pending !== null) {
-            const next = reveal.pending;
-            reveal.pending = null;
-            beginOpen(next);
-        } else {
-            reveal.high.forEach((mesh) => { mesh.visible = false; });
-            lowPlane.constant = 1e4;
-            if (reveal.plate) scene.remove(reveal.plate);
-            reveal.plate = null;
-            reveal.group = null;
-            reveal.level = null;
+    if (animations.size) needsRender = true;
+};
+const finishAnimations = () => {
+    for (let guard = 0; animations.size && guard < 8; guard++) {
+        for (const anim of [...animations]) {
+            animations.delete(anim);
+            anim.step(1);
+            anim.done?.();
         }
     }
 };
 
-const pickRoom = (room) => {
+const setCut = (y) => {
+    lowPlane.constant = y;
+    needsRender = true;
+};
+
+/** From the closed building: everything above the floor lifts off and leaves, the rooms grow in its place. */
+const openFresh = (level) => {
+    const cut = floorBase(level) + 0.04;
+    reveal.level = level;
+    reveal.cut = cut;
+    setCut(cut);
+    reveal.high.forEach((mesh) => {
+        mesh.visible = true;
+        mesh.position.y = 0;
+    });
+    highPlane.constant = -cut;
+    if (!reveal.ceiling) {
+        reveal.ceiling = new THREE.Mesh(planGeometry(PLAN_OUTLINE_PX, 0), material(0xdcd6c9));
+        reveal.ceiling.castShadow = true;
+        scene.add(reveal.ceiling);
+    }
+    reveal.ceiling.visible = true;
+    const group = buildPlate(floorAt(level));
+    reveal.plate = group;
+    buildRoomPins(floorAt(level));
+    applyColors();
+    animate(OPEN_MS, (e) => {
+        const lift = LIFT * e;
+        highPlane.constant = -(cut + lift);
+        reveal.high.forEach((mesh) => { mesh.position.y = lift; });
+        reveal.ceiling.position.y = cut + lift - 0.03;
+        group.userData.inner.scale.y = Math.max(0.001, e);
+    }, () => {
+        // out of sight now: hidden, so nothing hangs over the opened floor
+        reveal.high.forEach((mesh) => { mesh.visible = false; });
+        reveal.ceiling.visible = false;
+    });
+};
+
+/** One floor to another: only the storey between them goes or comes back; the roof stays away. */
+const switchFloor = (level) => {
+    const from = reveal.level;
+    const fromCut = reveal.cut;
+    const toCut = floorBase(level) + 0.04;
+    const outgoing = reveal.plate;
+    const incoming = buildPlate(floorAt(level));
+    reveal.level = level;
+    reveal.cut = toCut;
+    reveal.plate = incoming;
+    buildRoomPins(floorAt(level));
+    applyColors();
+    if (level < from) {
+        // going down: the floor we were on flies up and fades, and its storey's shell is cut away beneath it
+        animate(FLOOR_SWITCH_MS, (e) => {
+            setCut(fromCut + (toCut - fromCut) * e);
+            outgoing.position.y = floorBase(from) + SWITCH_LIFT * e;
+            fadePlate(outgoing, 1 - e);
+            incoming.userData.inner.scale.y = Math.max(0.001, e);
+        }, () => dropPlate(outgoing));
+    } else {
+        // going up: the shell grows back under the floor above, which settles in from where it flew
+        incoming.userData.inner.scale.y = 1;
+        animate(FLOOR_SWITCH_MS, (e) => {
+            setCut(fromCut + (toCut - fromCut) * e);
+            outgoing.userData.inner.scale.y = Math.max(0.001, 1 - e);
+            fadePlate(outgoing, 1 - e);
+            incoming.position.y = floorBase(level) + SWITCH_LIFT * (1 - e);
+            fadePlate(incoming, e);
+        }, () => dropPlate(outgoing));
+    }
+};
+
+const openReveal = (level) => {
+    finishAnimations();
+    if (reveal.plate && reveal.level !== level) switchFloor(level);
+    else if (!reveal.plate) openFresh(level);
+};
+
+/** Back to the whole building: it grows up again from the cut, the roof last. */
+const closeReveal = () => {
+    finishAnimations();
+    clearRoomPins();
+    const group = reveal.plate;
+    if (!group) return;
+    const from = reveal.cut;
+    const top = manifest.floors.eave + ROOF_CLEAR;
+    reveal.high.forEach((mesh) => {
+        mesh.visible = false;
+        mesh.position.y = 0;
+    });
+    animate(CLOSE_MS, (e) => {
+        setCut(from + (top - from) * e);
+        group.userData.inner.scale.y = Math.max(0.001, 1 - e);
+        fadePlate(group, 1 - e);
+    }, () => {
+        setCut(1e4);
+        dropPlate(group);
+        if (reveal.plate === group) reveal.plate = null;
+        reveal.level = null;
+    });
+};
+
+const pickRoom = (room, push = true) => {
     pickedRoom = room;
     renderFloorPanel();
     applyColors();
+    renderCrumbs();
+    if (push) remember();
     if (isNarrow() && room) panel.scrollIntoView({ block: 'start' });
 };
 
@@ -1672,6 +1910,15 @@ const applyColors = () => {
         else pin.node.classList.toggle('is-active', hovered === pin.key);
     }
     for (const b of panel.querySelectorAll('.room-list button')) b.classList.toggle('is-active', hovered === `room-${b.dataset.room}`);
+    for (const shape of planCard?.querySelectorAll('[data-room]') ?? []) {
+        shape.classList.toggle('is-hover', hovered === `room-${shape.dataset.room}`);
+        shape.classList.toggle('is-picked', pickedRoom?.id === shape.dataset.room);
+    }
+    const status = planCard?.querySelector('.plan-card-status');
+    if (status) {
+        const room = floorAt(+planCard.dataset.level).rooms.find((r) => hovered === `room-${r.id}`) ?? pickedRoom;
+        status.textContent = room ? `${room.id} · ≈ ${String(room.area).replace('.', ',')} m² · ${room.status}` : 'Vyberte kancelář';
+    }
     needsRender = true;
 };
 
@@ -1683,7 +1930,7 @@ const setHover = (key) => {
     if (!key) $('tip').hidden = true;
 };
 
-const goTo = (next) => {
+const goTo = (next, push = true) => {
     const wasOpen = mode === 'floor';
     const opens = next === 'floor';
     mode = next;
@@ -1691,6 +1938,7 @@ const goTo = (next) => {
     dialNode = null;
     setHover(null);
     removeGymSheet();
+    if (!opens) removePlanCard();
     if (opens) openLevel = activeLevel;
     if (controls) controls.maxPolarAngle = opens ? OPEN_FLOOR_MAX_POLAR : MAX_POLAR;
     if (scene) {
@@ -1699,7 +1947,10 @@ const goTo = (next) => {
     }
     if (next === 'overview') renderOverviewPanel();
     else if (next === 'floors') renderFloorsPanel();
-    else if (next === 'floor') renderFloorPanel();
+    else if (next === 'floor') {
+        renderFloorPanel();
+        showPlanCard(floorAt(openLevel));
+    }
     else if (next === 'gym') renderGymPanel();
     else renderZonePanel(next);
     if (scene) {
@@ -1707,6 +1958,8 @@ const goTo = (next) => {
         updatePinSet();
         flyTo(fitted(viewOf(next)), wasOpen && !opens ? 1000 : 1500);
     }
+    renderCrumbs();
+    if (push) remember();
     if (isNarrow() && next !== 'overview') $('stage').scrollIntoView({ block: 'start' });
 };
 
@@ -1952,9 +2205,8 @@ const initScene = async () => {
         const height = stage.clientHeight;
         renderer.setSize(width, height, false);
         camera.aspect = width / height;
-        // the panel covers the left on a wide screen, so the model sits to its right
-        camera.setViewOffset(width, height, isNarrow() ? 0 : -Math.min(190, width * 0.13), 0, width, height);
         camera.fov = width / height < 0.9 ? 48 : 32;
+        frameView();
         camera.updateProjectionMatrix();
         needsRender = true;
     };
@@ -2017,7 +2269,7 @@ const initScene = async () => {
             if (t === 1) flight = null;
         }
         controls.update();
-        stepReveal(now);
+        runAnimations(now);
         const k = reducedMotion ? 1 : 1 - Math.exp(-dt / 130);
         for (const [uniform, target] of [[shared.uLevel, levelTarget.level], [shared.uLevelOn, levelTarget.on]]) {
             if (Math.abs(uniform.value - target) > 0.002) {
@@ -2046,8 +2298,8 @@ const initScene = async () => {
     if (!reducedMotion) flight = { start: performance.now(), ms: 2600, from: { pos: camera.position.clone(), target: controls.target.clone() }, to: { pos: new THREE.Vector3(...start3.pos), target: new THREE.Vector3(...start3.target) } };
     setTimeout(() => $('pins').classList.add('is-ready'), reducedMotion ? 0 : 1100);
     // coming back from a floor's page, to that floor
-    const fromPage = /^#patro-([1-4])$/.exec(location.hash);
-    if (fromPage) setTimeout(() => openFloor(+fromPage[1]), reducedMotion ? 0 : 400);
+    // a shared link or a floor's page leads straight to its view
+    if (location.hash) setTimeout(() => route(location.hash), reducedMotion ? 0 : 400);
     window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal };
 };
 

@@ -248,7 +248,8 @@ const flat = (x, z) => [+(x - CENTER[0]).toFixed(1), +(z - CENTER[1]).toFixed(1)
 /* ---------- buildings ---------- */
 
 const kancelare = [footprints[OSM_KANCELARE], footprints[OSM_SCHODISTE]];
-const DORMER_FRONT = 0.25;
+// The small gable on the tower's roof, from the city model: its front runs a-b, its eaves and apex.
+const DORMER = { a: [438.8, 39.3], b: [440.0, 43.3], foot: -27.2, apex: -22.3, reach: 0.4 };
 const PROFILE_STEP = 0.5;
 const GARDEN_EDGE = 2;
 const COMPLEX_MARGIN = 3.5; // the map's outline and the model differ, and whatever falls between them is still this building
@@ -424,10 +425,12 @@ const wallAttributes = (part, tris) => {
         const length = plane.max - plane.min;
         if (kind === KIND.brick) return tri.flatMap((p) => [(p[0] * tx + p[2] * tz) / 0.5, p[1] / 0.25, KIND.brick, 0]);
         if (kind === KIND.dormer) {
-            // the small stepped gable: one window on its front, plain cheeks
-            // a gable peaks in its middle, a cheek at its end
-            const front = Math.abs(plane.topAt - (plane.min + plane.max) / 2) < length * DORMER_FRONT;
-            return tri.flatMap((p) => [(p[0] * tx + p[2] * tz - plane.min) / length, (plane.top - p[1]) / (plane.top - plane.low), KIND.dormer, front ? 1 : 0]);
+            // only the gable's front carries its window; the walls that share its plane stay plain
+            const { a, b, foot, apex, reach } = DORMER;
+            const span = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            const along = (p) => ((p[0] - a[0]) * (b[0] - a[0]) + (p[2] - a[1]) * (b[1] - a[1])) / (span * span);
+            const front = tri.every((p) => edgeDistance(p[0], p[2], [a, b]) < reach && p[1] >= foot - 0.1);
+            return tri.flatMap((p) => [along(p), (apex - p[1]) / (apex - foot), KIND.dormer, front ? 1 : 0]);
         }
         const floor = kind === KIND.office ? officeFloor : FACADE[kind].floor;
         const { bay } = FACADE[kind];

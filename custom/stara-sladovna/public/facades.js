@@ -373,7 +373,7 @@ const PAINTERS = {
         }
         w.win(L * 0.92, 8.7, 1.4, 2.4, { frame: C.steel, arch: true, columns: 2, rows: 2 });
         // the taller part beside the tower
-        for (const y of [7.5, 10.9, 14.2]) for (const f of [0.08, 0.2, 0.31]) if (y + 1 < H) w.win(L * f, y, 1.1, 1.6, { columns: 2, rows: 2, sill: true });
+        for (const y of [7.5, 10.9]) for (const f of [0.08, 0.2, 0.31]) if (y + 1 < H) w.win(L * f, y, 1.1, 1.6, { columns: 2, rows: 2, sill: true });
         w.rect(L * 0.36, 0, L * 0.372, H, C.ochre);
     },
     /* The office building: its windows sit where the floor plans draw them, one row per storey. */
