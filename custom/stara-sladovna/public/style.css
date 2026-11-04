@@ -163,9 +163,12 @@ body[data-theme="morning"] {
   left: 0;
   top: 0;
   color: var(--scene-ink);
-  font-size: 12px;
-  letter-spacing: .03em;
-  text-shadow: 0 1px 3px var(--scene-bg);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  /* a soft halo in the scene's own colour, so the name reads over roofs and roads alike */
+  text-shadow: 0 0 2px var(--scene-bg), 0 0 6px var(--scene-bg), 0 1px 10px var(--scene-bg);
   white-space: nowrap;
   pointer-events: none;
 }

@@ -99,17 +99,32 @@ export const PLANS3D = {
     },
 };
 
-// The client's plans draw the stair wing some 2 m longer towards the car park and 0.7 m shorter to the east
-// than the building has it (Brno's model, model.json floors.polygons[1]). Its pixels are moved onto the
-// building's wing, so the stair and the wing's walls stand inside the wing seen from outside.
-// east and bottom: where each plan draws the wing's outer walls.
-export const WING = { core: 1165, top: 735, east: 1345, bottom: 876 };
+// The client's plans draw the stair wing differently from the building's walls seen outside (the walls of
+// Brno's model, in plan pixels): the plans start its east half 45 px lower and end it lower and less far east.
+// Its pixels are moved onto the building's wing, so the stair and the wing's walls stand inside the wing.
+// The building's wing: west wall at x 923, east wall at 1320, its top along the offices' edge (690, the east
+// half 692), its bottom slanting from 888 at the west wall to 898 at the east one.
+// The plans: west wall 950, top 700 (735 east of the core at 1165), east and bottom as each plan draws them.
+export const WING = { core: 1165, west: 923, east: 1320, top: 690, eastTop: 692, bottomWest: 888, bottomEast: 898 };
+export const wingBottom = (x) => WING.bottomWest + ((x - WING.west) * (WING.bottomEast - WING.bottomWest)) / (WING.east - WING.west);
+const PLAN_WING = { west: 950, top: 700, eastTop: 735 };
 const fitWing = (plan, east, bottom) => {
-    const fit = (x, y) => [
-        x > WING.core && y >= WING.top - 1 ? WING.core + ((x - WING.core) * (WING.east - WING.core)) / (east - WING.core) : x,
-        y > WING.top && x >= 940 ? WING.top + ((y - WING.top) * (WING.bottom - WING.top)) / (bottom - WING.top) : y,
-    ];
-    const segment = ([x1, y1, x2, y2]) => [...fit(x1, y1), ...fit(x2, y2)];
+    const fit = (x, y) => {
+        if (y < PLAN_WING.top || x < 940) return [x, y];
+        const fx0 = x <= WING.core ? WING.west + ((x - PLAN_WING.west) * (WING.core - WING.west)) / (WING.core - PLAN_WING.west) : WING.core + ((x - WING.core) * (WING.east - WING.core)) / (east - WING.core);
+        const fx = Math.min(WING.east, Math.max(WING.west, fx0));
+        // between the offices' edge and the plan's top of the wing's east half, all is the wing's top wall
+        const fy = y <= PLAN_WING.eastTop ? WING.top + ((y - PLAN_WING.top) * (WING.eastTop - WING.top)) / (PLAN_WING.eastTop - PLAN_WING.top) : WING.eastTop + ((y - PLAN_WING.eastTop) * (wingBottom(fx) - WING.eastTop)) / (bottom - PLAN_WING.eastTop);
+        return [fx, fy];
+    };
+    // a wall that comes out of the offices into the wing keeps its line and only ends at the wing's top
+    const segment = ([x1, y1, x2, y2]) => {
+        if (Math.min(y1, y2) >= PLAN_WING.top - 1) return [...fit(x1, y1), ...fit(x2, y2)];
+        // the offices' outer wall along their edge ends at the wing's west wall, not in the wing's doorway
+        if (Math.max(y1, y2) < PLAN_WING.top && Math.abs(y1 - y2) < 1 && Math.max(x1, x2) === PLAN_WING.west) return [Math.min(x1, x2), y1, WING.west, y2];
+        const end = (x, y) => [x, y < PLAN_WING.top ? y : fit(x, y)[1]];
+        return [...end(x1, y1), ...end(x2, y2)];
+    };
     plan.walls = plan.walls.map(segment);
     plan.windows = plan.windows.map(segment);
     plan.stairs = segment(plan.stairs);

@@ -245,6 +245,17 @@ const baseY = groundAt(...CENTER);
 const shift = (x, y, z) => [+(x - CENTER[0]).toFixed(2), +(y - baseY).toFixed(2), +(z - CENTER[1]).toFixed(2)];
 const flat = (x, z) => [+(x - CENTER[0]).toFixed(1), +(z - CENTER[1]).toFixed(1)];
 
+// Where the city model's walls stop short of the roof above them, a hole shows the inside of the building.
+// Each patch is a wall's four corners in the page's metres (as shift() gives them), filled in as two triangles.
+const WALL_PATCHES = [
+    // the tower block's west wall by the hall's east end: the city model ends it 2 m under the roof
+    [[6.9, 12.5, 30.8], [7.8, 12.4, 33.8], [7.8, 14.7, 33.8], [6.9, 14.7, 30.8]],
+];
+for (const quad of WALL_PATCHES) {
+    const [a, b, c, d] = quad.map(([x, y, z]) => [x + CENTER[0], y + baseY, z + CENTER[1]]);
+    walls.push([a, b, c], [a, c, d]);
+}
+
 /* ---------- buildings ---------- */
 
 const kancelare = [footprints[OSM_KANCELARE], footprints[OSM_SCHODISTE]];

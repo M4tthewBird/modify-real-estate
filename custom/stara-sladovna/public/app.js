@@ -135,7 +135,7 @@ const MIN_DISTANCE = 22;
 const MAX_DISTANCE = 430;
 const limits = { min: MIN_DISTANCE, max: MAX_DISTANCE };
 // the stair wing as the building has it (see WING in floorplans.js), not as the client's plans draw it
-const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1345, 735], [1345, 876], [945, 876], [945, 690], [125, 690]];
+const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 690], [1320, 692], [1320, 898], [923, 888], [923, 690], [125, 690]];
 const PLAN_BODY_PX = [[148, 85], [1165, 85], [1165, 690], [125, 690]]; // the outline without its stair wing
 
 let manifest = null;
@@ -1175,6 +1175,140 @@ const addGlow = (x, y, z, size, opacity = 0.7) => {
     scene.add(sprite);
 };
 
+/* ---------- the bus and trolleybus stops on Mendlovo náměstí, as the street photo shows them ---------- */
+
+const STOP_ORANGE = 0xe4572a; // the square's masts, shelters and benches
+const STOP_REACH = 50; // platforms this close to the bus pin are the bus and trolleybus stops
+const MAST_STEP = 11; // metres between the masts along a platform
+const TREE_CLEARANCE = 0.8; // of a tree's radius: its crowns reach this far out from the trunk
+const STOP_SLIDE = [0, 1.5, -1.5, 3, -3, 4.5, -4.5, 6, -6]; // metres a stop's things may move along the platform, out of a tree
+
+/** A platform's long axis: its middle, direction, length and width, from its outline. */
+const platformAxis = (poly) => {
+    const pts = poly.slice(0, -1);
+    const [mx, mz] = pts.reduce((m, p) => [m[0] + p[0] / pts.length, m[1] + p[1] / pts.length], [0, 0]);
+    let xx = 0, xz = 0, zz = 0;
+    for (const [x, z] of pts) {
+        xx += (x - mx) ** 2;
+        xz += (x - mx) * (z - mz);
+        zz += (z - mz) ** 2;
+    }
+    const angle = 0.5 * Math.atan2(2 * xz, xx - zz);
+    const dir = [Math.cos(angle), Math.sin(angle)];
+    const normal = [-dir[1], dir[0]];
+    const along = pts.map(([x, z]) => (x - mx) * dir[0] + (z - mz) * dir[1]);
+    const across = pts.map(([x, z]) => (x - mx) * normal[0] + (z - mz) * normal[1]);
+    const a0 = Math.min(...along);
+    const a1 = Math.max(...along);
+    const mid = (a0 + a1) / 2;
+    return { at: [mx + dir[0] * mid, mz + dir[1] * mid], dir, normal, length: a1 - a0, width: Math.max(...across) - Math.min(...across) };
+};
+
+/** Whether a thing standing at (x, z), reaching `reach` metres around, keeps clear of every tree's crown. */
+const clearOfTrees = (x, z, reach) => manifest.map.trees.every(([tx, , tz, r]) => Math.hypot(x - tx, z - tz) > r * TREE_CLEARANCE + reach);
+
+/** A city bus in Brno's colours: white, a dark band of windows, an orange skirt, the roof's white housings. */
+const busModel = () => {
+    const bus = new THREE.Group();
+    const add = (mat, w, h, d, x, y, z = 0, geometry = null) => {
+        const mesh = new THREE.Mesh(geometry ?? new THREE.BoxGeometry(w, h, d), mat);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        bus.add(mesh);
+        return mesh;
+    };
+    const white = material(0xf4f3ef, { roughness: 0.5 });
+    const orange = material(STOP_ORANGE, { roughness: 0.5 });
+    const glass = material(0x14232b, { roughness: 0.25 });
+    const tyre = material(0x15191b);
+    const length = 12;
+    add(white, length, 2.55, 2.5, 0, 1.65); // the body, x along the bus
+    add(orange, length + 0.02, 0.62, 2.52, 0, 0.66); // the skirt
+    add(glass, length - 1.2, 1.15, 2.53, 0.25, 2.05); // the windows along both sides
+    add(glass, 0.04, 1.6, 2.2, length / 2 + 0.01, 1.95); // the windscreen
+    add(white, 0.05, 0.5, 2.3, length / 2 + 0.02, 2.95); // the destination board's frame
+    add(white, 3.4, 0.36, 1.9, -1.8, 3.1); // the roof's housings
+    add(white, 2.2, 0.3, 1.7, 2.6, 3.07);
+    const wheel = new THREE.CylinderGeometry(0.5, 0.5, 0.32, 16).rotateX(Math.PI / 2);
+    for (const wx of [3.6, -2.6]) for (const wz of [-1.12, 1.12]) add(tyre, 0, 0, 0, wx, 0.5, wz, wheel);
+    return bus;
+};
+
+const addBusStops = () => {
+    const bus = manifest.anchors.bus;
+    const platforms = manifest.map.platforms.filter((poly) => poly.some(([x, z]) => Math.hypot(x - bus[0], z - bus[2]) < STOP_REACH));
+    if (!platforms.length) return;
+    const orange = material(STOP_ORANGE, { roughness: 0.55 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xcfe0e4, roughness: 0.1, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+    const head = new THREE.MeshStandardMaterial({ color: 0xfff1d6, emissive: 0xffd9a0, emissiveIntensity: 0.6, roughness: 0.4 });
+    // a mast: a tall tapering pole whose top bends out over the road and carries the lamp
+    const pole = new THREE.CylinderGeometry(0.09, 0.13, 8.6, 8).translate(0, 4.3, 0);
+    const bend = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 8.5, 0), new THREE.Vector3(0, 9.7, 0), new THREE.Vector3(1.9, 9.4, 0));
+    const arm = new THREE.TubeGeometry(bend, 12, 0.07, 6);
+    const lamp = new THREE.BoxGeometry(0.6, 0.14, 0.26).translate(2.05, 9.32, 0);
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const masts = [];
+    const roofs = [];
+    const posts = [];
+    const panes = [];
+    const benches = [];
+    const at = (x, z, angle, y = 0, scale = [1, 1, 1]) => new THREE.Matrix4().compose(new THREE.Vector3(x, groundY(x, z) + y, z), new THREE.Quaternion().setFromAxisAngle(UP, angle), new THREE.Vector3(...scale));
+    let busPlaced = false;
+    for (const poly of platforms) {
+        const { at: [cx, cz], dir, normal, length, width } = platformAxis(poly);
+        const point = (s, t) => [cx + dir[0] * s + normal[0] * t, cz + dir[1] * s + normal[1] * t];
+        const heading = Math.atan2(-dir[1], dir[0]); // a box's x along the platform
+        const outward = Math.atan2(-normal[1], normal[0]); // the arm's x across it
+        const onPlatform = (s, half) => s - half > -length / 2 && s + half < length / 2;
+        /** The nearest place along the platform to s where everything listed at (along, across, reach) is clear. */
+        const slide = (s, half, probes) => STOP_SLIDE.map((d) => s + d).find((p) => onPlatform(p, half) && probes.every(([a, t, reach]) => clearOfTrees(...point(p + a, t), reach)));
+        const count = Math.max(2, Math.round(length / MAST_STEP));
+        for (let i = 0; i < count; i++) {
+            const side = i % 2 ? -1 : 1;
+            // the pole, and its arm leaning out over the lane on one side or the other, in turn
+            const s = slide(-length / 2 + 2 + ((length - 4) * i) / (count - 1), 0.3, [[0, 0, 0.4], [0, side * 1.1, 0.5], [0, side * 2, 0.5]]);
+            if (s === undefined) continue;
+            masts.push(at(...point(s, 0), side > 0 ? outward : outward + Math.PI));
+        }
+        // two shelters, each a flat orange roof on two posts with a glass back, and a bench under it
+        for (const wanted of [-length * 0.28, length * 0.18]) {
+            const s = slide(wanted, 2.4, [-2.3, -1.15, 0, 1.15, 2.3].map((a) => [a, 0, 1.1]));
+            if (s === undefined) continue;
+            roofs.push(at(...point(s, 0), heading, 2.75, [4.6, 0.14, 1.9]));
+            for (const end of [-2.1, 2.1]) posts.push(at(...point(s + end, -0.7), heading, 1.37, [0.12, 2.75, 0.12]));
+            panes.push(at(...point(s, -0.72), heading, 1.35, [4.1, 2.1, 0.03]));
+            benches.push(at(...point(s, -0.35), heading, 0.45, [2.6, 0.08, 0.42]));
+        }
+        // the stop's sign at the platform's head
+        const sign = slide(length / 2 - 1.2, 0.3, [[0, 0.6, 0.4]]);
+        if (sign !== undefined) {
+            posts.push(at(...point(sign, 0.6), heading, 1.4, [0.08, 2.8, 0.08]));
+            benches.push(at(...point(sign, 0.6), heading, 2.55, [0.5, 0.5, 0.05]));
+        }
+        // one bus waiting at the first platform, in the lane beside it
+        if (!busPlaced) {
+            const across = width / 2 + 1.7;
+            const s = STOP_SLIDE.map((d) => d * 2).find((d) => [-6, -3, 0, 3, 6].every((a) => clearOfTrees(...point(d + a, across), 1.4)));
+            if (s !== undefined) {
+                const model = busModel();
+                const [bx, bz] = point(s, across);
+                model.position.set(bx, groundY(bx, bz), bz);
+                model.rotation.y = heading;
+                scene.add(model);
+                busPlaced = true;
+            }
+        }
+    }
+    const mastMeshes = [instanced(pole, orange, masts, scene), instanced(arm, orange, masts, scene), instanced(lamp, head, masts, scene)];
+    instanced(box, orange, roofs, scene);
+    instanced(box, orange, posts, scene);
+    instanced(box, orange, benches, scene);
+    const pane = instanced(box, glass, panes, scene);
+    pane.castShadow = false;
+    mastMeshes[2].castShadow = false;
+};
+
 const addTrees = () => {
     const { trees } = manifest.map;
     const crown = new THREE.IcosahedronGeometry(1, 1);
@@ -1859,7 +1993,7 @@ const buildStairs = (group, rect, fromBelow) => {
 };
 const stairsRect = () => PLANS3D[3].stairs;
 // along the offices' side to the neighbouring building; opened, the floor looks into the gap between the two
-const DIVIDING_WALL_PX = [[1165, 85], [1165, 735]];
+const DIVIDING_WALL_PX = [[1165, 85], [1165, 690]];
 const DIVIDING_SAMPLES = 40;
 
 /** A thin wall in the facades' colour over the gap to the neighbouring building, from the ground to that
@@ -2920,7 +3054,8 @@ const initScene = async () => {
     shared.uFloorHeight.value = floorHeight();
     // walls drawn from the photos where there is a photo, and the procedural surfaces on what remains
     const zoneParts = { hall: [addMesh(buffer, 'hlavni_steny'), addMesh(buffer, 'hlavni_strechy')], sal: [addMesh(buffer, 'sal_steny'), addMesh(buffer, 'sal_strechy')], kancelare: [addMesh(buffer, 'kancelare_steny'), addMesh(buffer, 'kancelare_strechy')] };
-    await document.fonts.load('600 40px "Work Sans"').catch(() => {}); // the banner's lettering
+    // the signs' lettering on the hall
+    await Promise.all(['300', '500', '600'].map((weight) => document.fonts.load(`${weight} 40px "Work Sans"`))).catch(() => {});
     for (const [name, spec] of Object.entries(manifest.facades)) {
         const wall = paintFacade(name, spec);
         const mesh = new THREE.Mesh(facadeGeometry(buffer, spec), facadeMaterial(wall, spec.zone === 'kancelare'));
@@ -2984,6 +3119,7 @@ const initScene = async () => {
     addTerrace();
     addPerimeter();
     addCars();
+    addBusStops();
     addTrees();
     addRoute();
     buildPins();

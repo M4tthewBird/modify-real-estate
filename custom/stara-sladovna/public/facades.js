@@ -22,10 +22,11 @@ const C = {
 };
 
 class Wall {
-    constructor(L, H) {
+    constructor(L, H, s = SCALE) {
+        this.s = s; // pixels per metre: more on a wall whose painting has fine detail
         this.L = L;
         this.H = H;
-        const make = () => Object.assign(document.createElement('canvas'), { width: Math.ceil(L * SCALE), height: Math.ceil(H * SCALE) });
+        const make = () => Object.assign(document.createElement('canvas'), { width: Math.ceil(L * this.s), height: Math.ceil(H * this.s) });
         this.colour = make();
         this.glow = make();
         this.c = this.colour.getContext('2d');
@@ -44,12 +45,12 @@ class Wall {
         return this.seed / 2147483647;
     }
 
-    x(m) { return m * SCALE; }
-    y(m) { return this.colour.height - m * SCALE; }
+    x(m) { return m * this.s; }
+    y(m) { return this.colour.height - m * this.s; }
 
     rect(x0, y0, x1, y1, colour, ctx = this.c) {
         ctx.fillStyle = colour;
-        ctx.fillRect(this.x(x0), this.y(y1), (x1 - x0) * SCALE, (y1 - y0) * SCALE);
+        ctx.fillRect(this.x(x0), this.y(y1), (x1 - x0) * this.s, (y1 - y0) * this.s);
     }
 
     fill(colour) { this.rect(0, 0, this.L, this.H, colour); }
@@ -82,7 +83,7 @@ class Wall {
             context.save();
             path(context);
             context.clip();
-            context.fillRect(this.x(x0), this.y(y1), (x1 - x0) * SCALE, (y1 - y0) * SCALE);
+            context.fillRect(this.x(x0), this.y(y1), (x1 - x0) * this.s, (y1 - y0) * this.s);
             context.restore();
         }
         // glazing bars on top, in both canvases, so they stay dark on a lit window
@@ -91,8 +92,8 @@ class Wall {
             path(context);
             context.clip();
             context.fillStyle = colour;
-            for (let i = 1; i < bars.columns; i++) context.fillRect(this.x(x0 + ((x1 - x0) * i) / bars.columns) - 1, this.y(y1), 2, (y1 - y0) * SCALE);
-            for (let i = 1; i < bars.rows; i++) context.fillRect(this.x(x0), this.y(y0 + ((y1 - y0) * i) / bars.rows) - 1, (x1 - x0) * SCALE, 2);
+            for (let i = 1; i < bars.columns; i++) context.fillRect(this.x(x0 + ((x1 - x0) * i) / bars.columns) - this.s / 28, this.y(y1), this.s / 14, (y1 - y0) * this.s);
+            for (let i = 1; i < bars.rows; i++) context.fillRect(this.x(x0), this.y(y0 + ((y1 - y0) * i) / bars.rows) - this.s / 28, (x1 - x0) * this.s, this.s / 14);
             context.restore();
         }
     }
@@ -110,7 +111,7 @@ class Wall {
             const right = this.x(x1 + grow);
             const bottom = this.y(y0 - grow);
             if (arch) {
-                const r = (w / 2 + grow) * SCALE;
+                const r = (w / 2 + grow) * this.s;
                 const spring = this.y(y1 - w / 2);
                 context.moveTo(left, bottom);
                 context.lineTo(left, spring);
@@ -161,7 +162,7 @@ class Wall {
         ctx.beginPath();
         ctx.moveTo(this.x(cx - w / 2), this.y(y0));
         ctx.lineTo(this.x(cx - w / 2), spring);
-        ctx.arc(this.x(cx), spring, (w / 2) * SCALE, Math.PI, 0);
+        ctx.arc(this.x(cx), spring, (w / 2) * this.s, Math.PI, 0);
         ctx.lineTo(this.x(cx + w / 2), this.y(y0));
         ctx.closePath();
         ctx.fill();
@@ -175,11 +176,11 @@ class Wall {
         const ctx = this.c;
         ctx.fillStyle = C.trim;
         ctx.beginPath();
-        ctx.arc(this.x(cx), this.y(cy), (r + 0.1) * SCALE, 0, Math.PI * 2);
+        ctx.arc(this.x(cx), this.y(cy), (r + 0.1) * this.s, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = open ? C.pane : C.shade;
         ctx.beginPath();
-        ctx.arc(this.x(cx), this.y(cy), r * SCALE, 0, Math.PI * 2);
+        ctx.arc(this.x(cx), this.y(cy), r * this.s, 0, Math.PI * 2);
         ctx.fill();
         this.parts.push({ type: 'ring', cx, cy, r: r + 0.04, tube: 0.07, colour: C.trim });
     }
@@ -198,8 +199,8 @@ class Wall {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         // as large as the banner's width allows, then shrunk until the whole lettering fits its length
-        const room = (y1 - y0) * SCALE * 0.92;
-        let size = (x1 - x0) * SCALE * 0.42;
+        const room = (y1 - y0) * this.s * 0.92;
+        let size = (x1 - x0) * this.s * 0.42;
         ctx.font = `600 ${size}px "Work Sans", sans-serif`;
         const width = ctx.measureText(text).width;
         if (width > room) {
@@ -210,6 +211,167 @@ class Wall {
         ctx.restore();
     }
 }
+
+/* The two signs on the hall's street side (photo of the courtyard front): the brewery's name painted on the
+   plaster with its round mark above, and the beer poster beside it, drawn in the model's flat, simple style. */
+
+/** Text fitted into a width: as large as `size` pixels allows, shrunk until it fits. */
+const fitText = (ctx, text, width, size, weight = 600, style = '') => {
+    let px = size;
+    ctx.font = `${style} ${weight} ${px}px "Work Sans", sans-serif`;
+    const measured = ctx.measureText(text).width;
+    if (measured > width) {
+        px *= width / measured;
+        ctx.font = `${style} ${weight} ${px}px "Work Sans", sans-serif`;
+    }
+    return px;
+};
+
+/** The brewery's name in two vertical lines, read upwards, its round mark above them. */
+const paintBreweryName = (w, x0, y0, x1, y1) => {
+    const ctx = w.c;
+    const ink = '#262a3d';
+    const width = (x1 - x0) * w.s;
+    const cx = w.x((x0 + x1) / 2);
+    const markR = width * 0.36;
+    const markY = w.y(y1) + markR * 1.15;
+    // the mark: a ring, and inside it a stem with a bowl, after the brewery's round sign
+    ctx.save();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = markR * 0.16;
+    ctx.beginPath();
+    ctx.arc(cx, markY, markR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = markR * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(cx - markR * 0.28, markY - markR * 0.55);
+    ctx.lineTo(cx - markR * 0.28, markY + markR * 0.62);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + markR * 0.02, markY - markR * 0.12, markR * 0.34, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    ctx.restore();
+    // the two lines, bottom to top
+    const top = markY + markR * 1.5;
+    const bottom = w.y(y0);
+    const length = (bottom - top) * 0.96;
+    ctx.save();
+    ctx.translate(cx, (top + bottom) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = ink;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    fitText(ctx, 'PIVOVARSKÁ', length, width * 0.4, 600);
+    ctx.fillText('PIVOVARSKÁ', 0, -width * 0.2);
+    fitText(ctx, 'STAROBRNO', length * 0.86, width * 0.4, 300);
+    ctx.fillText('STAROBRNO', 0, width * 0.24);
+    ctx.restore();
+};
+
+/** The beer poster: its title, hands holding hop cones, the beer's name, a glass of it and the round badge. */
+const paintBeerPoster = (w, x0, y0, x1, y1) => {
+    const ctx = w.c;
+    const L = w.x(x0);
+    const T = w.y(y1);
+    const W = (x1 - x0) * w.s;
+    const H = (y1 - y0) * w.s;
+    const X = (f) => L + W * f;
+    const Y = (f) => T + H * f;
+    const poly = (colour, pts) => {
+        ctx.fillStyle = colour;
+        ctx.beginPath();
+        pts.forEach(([fx, fy], i) => (i ? ctx.lineTo(X(fx), Y(fy)) : ctx.moveTo(X(fx), Y(fy))));
+        ctx.closePath();
+        ctx.fill();
+    };
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(L, T, W, H);
+    ctx.clip();
+    const bg = ctx.createLinearGradient(0, T, 0, T + H);
+    bg.addColorStop(0, '#f6e7cf');
+    bg.addColorStop(0.5, '#eec39c');
+    bg.addColorStop(1, '#e6ad80');
+    ctx.fillStyle = bg;
+    ctx.fillRect(L, T, W, H);
+    // the title
+    ctx.fillStyle = '#93402a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    fitText(ctx, 'NAŠE', W * 0.5, H * 0.075, 500);
+    ctx.fillText('NAŠE', X(0.5), Y(0.1));
+    fitText(ctx, 'HOŘKOST', W * 0.8, H * 0.075, 500);
+    ctx.fillText('HOŘKOST', X(0.5), Y(0.19));
+    // two cupped hands, flat and faceted like the rest of the model
+    poly('#e3a47e', [[0.02, 0.38], [0.18, 0.43], [0.32, 0.5], [0.5, 0.54], [0.46, 0.61], [0.22, 0.61], [0.05, 0.51]]);
+    poly('#eab792', [[0.98, 0.38], [0.82, 0.43], [0.68, 0.5], [0.5, 0.54], [0.54, 0.61], [0.78, 0.61], [0.95, 0.51]]);
+    poly('#cf8d68', [[0.22, 0.61], [0.5, 0.57], [0.78, 0.61], [0.6, 0.64], [0.4, 0.64]]);
+    // the hop cones heaped in them
+    const cones = [[0.46, 0.33], [0.6, 0.32], [0.3, 0.42], [0.42, 0.4], [0.55, 0.39], [0.7, 0.42], [0.36, 0.49], [0.5, 0.47], [0.64, 0.5]];
+    for (const [fx, fy] of cones) {
+        const cx = X(fx);
+        const cy = Y(fy);
+        const r = W * 0.075;
+        ctx.fillStyle = '#7f9e3d';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r, r * 1.35, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // the cone's overlapping bracts
+        ctx.fillStyle = '#a5c15b';
+        for (let k = -1; k <= 1; k++) {
+            ctx.beginPath();
+            ctx.ellipse(cx + k * r * 0.35, cy - r * 0.3 + Math.abs(k) * r * 0.35, r * 0.4, r * 0.5, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.fillStyle = '#c6da7e';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + r * 0.5, r * 0.36, r * 0.42, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // the beer's name, lower left
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#93402a';
+    fitText(ctx, 'EXTRA HOŘKÝ', W * 0.42, H * 0.03, 600);
+    ctx.fillText('EXTRA HOŘKÝ', X(0.07), Y(0.76));
+    ctx.fillStyle = '#b3332a';
+    fitText(ctx, 'BITR', W * 0.42, H * 0.07, 600);
+    ctx.fillText('BITR', X(0.07), Y(0.835));
+    ctx.fillStyle = '#93402a';
+    fitText(ctx, 'LEŽÁK', W * 0.3, H * 0.028, 600);
+    ctx.fillText('LEŽÁK', X(0.12), Y(0.875));
+    fitText(ctx, 'Starobrno', W * 0.36, H * 0.034, 500);
+    ctx.fillText('Starobrno', X(0.08), Y(0.935));
+    // a glass of it, lower right
+    poly('#e7a032', [[0.55, 0.76], [0.84, 0.76], [0.82, 0.97], [0.57, 0.97]]);
+    poly('#f3bd52', [[0.6, 0.78], [0.66, 0.78], [0.65, 0.95], [0.61, 0.95]]);
+    poly('#fbf3dc', [[0.54, 0.72], [0.85, 0.72], [0.84, 0.77], [0.55, 0.77]]);
+    ctx.strokeStyle = '#f4e6c2';
+    ctx.lineWidth = W * 0.035;
+    ctx.beginPath();
+    ctx.arc(X(0.86), Y(0.86), W * 0.08, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    // the round red badge
+    const bx = X(0.82);
+    const by = Y(0.665);
+    const br = W * 0.13;
+    ctx.fillStyle = '#c4352b';
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#f6e7cf';
+    ctx.lineWidth = br * 0.06;
+    ctx.beginPath();
+    ctx.arc(bx, by, br * 0.84, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(ctx, '4X', br * 1.1, br * 0.9, 600);
+    ctx.fillText('4X', bx, by + br * 0.05);
+    ctx.restore();
+    // the rod the banner hangs from
+    w.rect(x0 - 0.05, y1, x1 + 0.05, y1 + 0.08, '#b9b2a4');
+};
 
 const hallUpperWindow = { columns: 2, rows: 3, hood: true, sill: true };
 
@@ -234,14 +396,13 @@ const PAINTERS = {
         for (let x = 9.2; x < L - 1.2; x += 2.95) columns.push(x);
         for (const y of rowY) {
             for (const x of columns) {
-                // the banners hang over these windows
-                if (x > L * 0.565 && x < L * 0.77) continue;
+                // the brewery's name and the poster cover these windows; the column between them stays
+                if ((x > L * 0.565 && x < L * 0.63) || (x > L * 0.69 && x < L * 0.79)) continue;
                 w.win(x, y, x === 3.3 ? 1.5 : 1.05, x === 3.3 ? 1.75 : 1.4, hallUpperWindow);
             }
         }
-        const bannerY = ground + 0.5;
-        w.banner(L * 0.585, bannerY, L * 0.655, H - 1.3, '#f8f6f0', '#1c1c1c', 'PIVOVARSKÁ STAROBRNO');
-        w.banner(L * 0.665, bannerY, L * 0.75, H - 1.3, '#e7b08a', '#7c2a18', 'NAŠE HORKOST');
+        paintBreweryName(w, L * 0.575, ground + 0.9, L * 0.625, H - 1.5);
+        paintBeerPoster(w, L * 0.695, ground + 0.4, L * 0.785, H - 1.2);
         w.cornice(H - 0.6, 0.46);
         w.rect(0, H - 0.14, L, H, C.ochre);
     },
@@ -312,7 +473,7 @@ const PAINTERS = {
             w.rect(x0, base + 0.8, x1, 12.4, '#f7f2e6');
             w.c.strokeStyle = C.shade;
             w.c.lineWidth = 2;
-            w.c.strokeRect(w.x(x0), w.y(12.4), (x1 - x0) * SCALE, (12.4 - base - 0.8) * SCALE);
+            w.c.strokeRect(w.x(x0), w.y(12.4), (x1 - x0) * w.s, (12.4 - base - 0.8) * w.s);
         };
         const LEFT = L * 0.235;
         const RIGHT = L * 0.65;
@@ -336,7 +497,7 @@ const PAINTERS = {
         w.win(RIGHT, 9.4, 5.0, 4.0, { columns: 5, rows: 3, lit: 0.9 });
         c.lineWidth = 3;
         c.beginPath();
-        c.arc(w.x(RIGHT), w.y(10.8), 2.6 * SCALE, Math.PI, 0);
+        c.arc(w.x(RIGHT), w.y(10.8), 2.6 * w.s, Math.PI, 0);
         c.stroke();
         w.parts.push({ type: 'arc', cx: RIGHT, cy: 10.8, r: 2.6, tube: 0.1, colour: C.trim });
         // the columns and their ornamented heads
@@ -414,7 +575,8 @@ const PAINTERS = {
 };
 
 export const paintFacade = (name, spec) => {
-    const wall = new Wall(spec.L, spec.H);
+    // the hall's street side carries the signs' lettering, so it is painted finer
+    const wall = new Wall(spec.L, spec.H, name === 'hallSouth' ? 64 : SCALE);
     PAINTERS[spec.painter ?? name](wall, spec);
     return wall;
 };
