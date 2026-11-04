@@ -3,7 +3,9 @@
 //
 // walls: [x1, y1, x2, y2], with gaps left where the plan draws a door
 // windows: the same, along the outer wall
-// furniture: { t: desk | chair | oval | plant | cabinet | wc | sink, x, y, w, h, a }
+// furniture: { t: desk | chair | armchair | oval | plant | cabinet | counter | wc | sink, x, y, w, h, a }, a desk may be wood: true
+// kitchen: [x1, y1, x2, y2], where tables are wooden and chairs white, as the client's 3D plans show them
+// stairs: [x1, y1, x2, y2], the stair in the stair wing: flights run along x, side by side along y
 
 export const PLANS3D = {
     3: {
@@ -36,7 +38,7 @@ export const PLANS3D = {
         furniture: [
             { t: 'oval', x: 215, y: 395, w: 55, h: 145 },
             { t: 'chair', x: 175, y: 368, a: 90 }, { t: 'chair', x: 175, y: 420, a: 90 }, { t: 'chair', x: 256, y: 368, a: -90 }, { t: 'chair', x: 256, y: 420, a: -90 }, { t: 'chair', x: 215, y: 315, a: 0 }, { t: 'chair', x: 215, y: 473, a: 180 },
-            { t: 'desk', x: 300, y: 145, w: 95, h: 105 }, { t: 'chair', x: 262, y: 235, a: 0 }, { t: 'chair', x: 310, y: 235, a: 0 },
+            { t: 'desk', x: 300, y: 145, w: 95, h: 105, wood: true }, { t: 'armchair', x: 262, y: 235, a: 0 }, { t: 'armchair', x: 310, y: 235, a: 0 },
             { t: 'desk', x: 387, y: 165, w: 62, h: 70 }, { t: 'chair', x: 387, y: 118, a: 180 }, { t: 'chair', x: 387, y: 212, a: 0 },
             { t: 'desk', x: 517, y: 165, w: 62, h: 70 }, { t: 'chair', x: 517, y: 118, a: 180 }, { t: 'chair', x: 517, y: 212, a: 0 },
             { t: 'desk', x: 632, y: 165, w: 70, h: 60 }, { t: 'chair', x: 582, y: 165, a: 90 }, { t: 'chair', x: 682, y: 165, a: -90 }, { t: 'plant', x: 585, y: 110 },
@@ -50,8 +52,10 @@ export const PLANS3D = {
             { t: 'desk', x: 780, y: 620, w: 70, h: 62 }, { t: 'chair', x: 730, y: 620, a: 90 }, { t: 'chair', x: 830, y: 620, a: -90 },
             { t: 'cabinet', x: 864, y: 535, w: 18, h: 155 }, { t: 'plant', x: 850, y: 655 },
             { t: 'wc', x: 1128, y: 415 }, { t: 'sink', x: 1128, y: 375 }, { t: 'wc', x: 1128, y: 478 }, { t: 'sink', x: 1128, y: 520 }, { t: 'sink', x: 1128, y: 590 }, { t: 'wc', x: 1068, y: 680 }, { t: 'wc', x: 1118, y: 680 },
-            { t: 'cabinet', x: 1100, y: 310, w: 100, h: 32 },
+            { t: 'counter', x: 1100, y: 310, w: 100, h: 32 },
         ],
+        kitchen: [960, 85, 1165, 262],
+        stairs: [1110, 745, 1300, 915],
     },
     4: {
         walls: [
@@ -85,11 +89,13 @@ export const PLANS3D = {
             { t: 'desk', x: 1035, y: 187, w: 38, h: 38 }, { t: 'chair', x: 1005, y: 187, a: 90 },
             { t: 'desk', x: 1130, y: 205, w: 44, h: 44 }, { t: 'chair', x: 1130, y: 175, a: 180 },
             { t: 'desk', x: 640, y: 622, w: 78, h: 88 }, { t: 'chair', x: 588, y: 622, a: 90 }, { t: 'chair', x: 692, y: 622, a: -90 }, { t: 'cabinet', x: 708, y: 510, w: 20, h: 75 }, { t: 'plant', x: 590, y: 472 },
-            { t: 'desk', x: 803, y: 623, w: 88, h: 38 }, { t: 'chair', x: 803, y: 660, a: 0 }, { t: 'chair', x: 860, y: 482, a: -90 }, { t: 'chair', x: 860, y: 540, a: -90 }, { t: 'cabinet', x: 875, y: 630, w: 12, h: 68 },
-            { t: 'cabinet', x: 1140, y: 300, w: 26, h: 64 },
+            { t: 'desk', x: 803, y: 623, w: 88, h: 38 }, { t: 'chair', x: 803, y: 660, a: 0 }, { t: 'armchair', x: 860, y: 482, a: -90 }, { t: 'armchair', x: 860, y: 540, a: -90 }, { t: 'cabinet', x: 875, y: 630, w: 12, h: 68 },
+            { t: 'counter', x: 1140, y: 300, w: 26, h: 64 },
             { t: 'wc', x: 1118, y: 435 }, { t: 'sink', x: 1118, y: 405 }, { t: 'wc', x: 1118, y: 508 }, { t: 'sink', x: 1118, y: 475 }, { t: 'wc', x: 1118, y: 580 }, { t: 'sink', x: 1118, y: 545 }, { t: 'wc', x: 1118, y: 620 }, { t: 'sink', x: 1118, y: 655 },
             { t: 'plant', x: 1100, y: 865 },
         ],
+        kitchen: [962, 85, 1160, 285],
+        stairs: [1110, 745, 1295, 912],
     },
 };
 

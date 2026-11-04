@@ -35,9 +35,12 @@ export const GYM = {
     text: 'Soukromý gym pro jednotlivce v přízemí budovy s kancelářemi, celkem 87,6 m².',
     tour: { id: 'ikka_gym', title: 'Privátní gym', poster: here('gym/04-gym.webp') },
     // Our scan as gaussian splats, already turned to the floor plan's metres (floor at 0, y up): see README.
-    // `at` is where the middle of the gym plan sits on the client's office plan in pixels, `turn` turns it there.
-    // Where the gym really is on the ground floor is still to be confirmed, these two numbers move it.
-    splat: { full: here('gym/gym.sog'), lite: here('gym/gym-lite.sog'), at: [520, 388], turn: 90 },
+    // `at` is where the middle of the gym plan sits on the client's office plan in pixels, `turn` turns it there,
+    // `scale` sizes it. Taken from our drawing of the gym on the ground floor: its entrance faces the car park.
+    // shell.json: the walls' and floors' colours, from build-gym.mjs.
+    splat: { full: here('gym/gym.sog'), lite: here('gym/gym-lite.sog'), shell: here('gym/shell.json'), at: [520.5, 419.7], turn: -90, scale: 1.08,
+        // the plan beside the model, turned to read the way the model is seen from the car park
+        planTurn: -90 },
     // Room names and areas from our floor plan; photo is what opens when the room is picked.
     rooms: [
         { name: 'Gym', area: '44,5 m²', photo: '04-gym' },

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONTACT, FLOORS, GYM, SAMPLE_DATA, VIEWER_URL, ZONES, floorPage } from './data.js';
-import { gymOutline, gymPlanSvg } from './gymplan.js';
+import { gymOutline, gymPlanSvg, isOuterWall } from './gymplan.js';
 import { paintFacade } from './facades.js';
 import { OUTER_WALLS, PLANS3D } from './floorplans.js';
 
@@ -122,6 +122,7 @@ const themed = { glows: [] }; // what a change of the light has to touch
 
 const LIFT = 60; // far enough that the storeys above leave the view, and then they are hidden
 const WALL_HEIGHT = 1.5; // inside the opened floor: cut low, so the rooms stay readable
+const INDOOR_GLOW = 0.38; // how much an opened floor lights itself
 const SILL = 0.8;
 const OPEN_FLOOR_MAX_POLAR = 1.05; // an opened floor reads from above; lower, its walls hide the rooms
 const MAX_POLAR = 1.42;
@@ -134,6 +135,7 @@ const MIN_DISTANCE = 22;
 const MAX_DISTANCE = 430;
 const limits = { min: MIN_DISTANCE, max: MAX_DISTANCE };
 const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1313, 735], [1313, 925], [945, 925], [945, 690], [125, 690]];
+const PLAN_BODY_PX = [[148, 85], [1165, 85], [1165, 690], [125, 690]]; // the outline without its stair wing
 
 let manifest = null;
 let groundHeights = null;
@@ -563,7 +565,7 @@ const renderGymPanel = () => {
     updateGymStatus();
     removeGymSheet();
     if (gymData) {
-        const sheet = el('div', { className: 'gym-sheet' }, gymPlanSvg(gymData, GYM.rooms, setGymPhoto));
+        const sheet = el('div', { className: 'gym-sheet' }, gymPlanSvg(gymData, GYM.rooms, setGymPhoto, SPLAT_GYM ? GYM.splat.planTurn : 0));
         // a wide screen has room for the plan beside the panel; a narrow one keeps it in the panel's flow
         if (isNarrow()) panel.insertBefore(sheet, panel.querySelector('.panel-actions:last-child'));
         else $('stage').append(sheet);
@@ -1526,13 +1528,16 @@ const stepWalker = (now) => {
 const flatAt = (px) => pxToFlat(px);
 const metresPerPixel = (dx, dy) => Math.hypot(...planDelta(dx, dy)) / STEP_PX;
 
-const planGeometry = (polyPx, y) => {
+const planGeometry = (polyPx, y, holesPx = []) => {
     const contour = polyPx.map(([x, z]) => new THREE.Vector2(x, z));
-    const faces = THREE.ShapeUtils.triangulateShape(contour, []);
+    const holes = holesPx.map((hole) => hole.map(([x, z]) => new THREE.Vector2(x, z)));
+    const faces = THREE.ShapeUtils.triangulateShape(contour, holes);
+    // the face indices count the outline's corners first, then each hole's
+    const corners = [polyPx, ...holesPx].flat();
     const positions = [];
     for (const face of faces) {
         for (const k of face) {
-            const [x, z] = flatAt(polyPx[k]);
+            const [x, z] = flatAt(corners[k]);
             positions.push(x, y, z);
         }
     }
@@ -1574,6 +1579,47 @@ const woodTexture = (() => {
         return texture;
     };
 })();
+
+/** A repeating texture drawn once on a canvas; turned with the building, so tiles run along its walls. */
+const canvasTexture = (draw) => {
+    let texture = null;
+    return () => {
+        if (texture) return texture;
+        const canvas = el('canvas', { width: 512, height: 512 });
+        draw(canvas.getContext('2d'));
+        texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.center.set(0.5, 0.5);
+        texture.rotation = -planAngle();
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return texture;
+    };
+};
+// one texture repeat is 2.2 m (planGeometry's uv), so four tiles of 55 cm
+const tileTexture = canvasTexture((c) => {
+    c.fillStyle = '#efe9dc';
+    c.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+        const shade = 234 + ((i * 7 + j * 13) % 9);
+        c.fillStyle = `rgb(${shade},${shade - 5},${shade - 17})`;
+        c.fillRect(i * 128 + 2, j * 128 + 2, 124, 124);
+    }
+});
+const carpetTexture = canvasTexture((c) => {
+    c.fillStyle = '#c9bd9f';
+    c.fillRect(0, 0, 512, 512);
+    // the faint ribs of a loop-pile carpet, and its fleck
+    for (let x = 0; x < 512; x += 8) {
+        c.fillStyle = x % 16 ? 'rgba(255,255,255,.05)' : 'rgba(60,45,20,.05)';
+        c.fillRect(x, 0, 4, 512);
+    }
+    for (let i = 0; i < 2600; i++) {
+        c.fillStyle = i % 2 ? 'rgba(255,250,235,.10)' : 'rgba(70,55,30,.10)';
+        c.fillRect((i * 97) % 512, (i * 193) % 509, 2, 2);
+    }
+});
 
 const instanced = (geometry, mat, items, parent) => {
     const mesh = new THREE.InstancedMesh(geometry, mat, items.length);
@@ -1618,37 +1664,97 @@ const roomPin = (key, label, position, onClick, free) => {
     pins.push({ key, kind: 'room', node, position: new THREE.Vector3(...position), visible: true });
 };
 
+const insideRect = (f, rect) => rect && f.x > rect[0] && f.x < rect[2] && f.y > rect[1] && f.y < rect[3];
+
+/** Indoors the light is the office's own: a desk lamp at a corner of each desk, its shade glowing warm,
+    and a soft pool of light on the desk under it. */
+const lampPool = canvasTexture((c) => {
+    const g = c.createRadialGradient(256, 256, 0, 256, 256, 256);
+    g.addColorStop(0, 'rgba(255,214,150,0.42)');
+    g.addColorStop(0.45, 'rgba(255,200,130,0.16)');
+    g.addColorStop(1, 'rgba(255,190,120,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 512, 512);
+});
+const buildDeskLamps = (group, desks) => {
+    if (!desks.length) return;
+    const lamps = desks.map((d) => ({ x: d.x + d.w * 0.36, y: d.y - d.h * 0.36 }));
+    const dark = material(0x2a2a2a);
+    const shade = new THREE.MeshStandardMaterial({ color: 0xffe2b0, emissive: 0xffc777, emissiveIntensity: 0.75, roughness: 0.6, side: THREE.DoubleSide });
+    instanced(new THREE.CylinderGeometry(0.07, 0.08, 0.02, 16), dark, lamps.map((l) => boxMatrixAt(l, 0.78)), group);
+    instanced(new THREE.CylinderGeometry(0.012, 0.012, 0.38, 6), dark, lamps.map((l) => boxMatrixAt(l, 0.97)), group);
+    instanced(new THREE.ConeGeometry(0.11, 0.14, 18, 1, true), shade, lamps.map((l) => boxMatrixAt(l, 1.17)), group);
+    const pool = new THREE.MeshBasicMaterial({ map: lampPool(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const pools = instanced(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), pool, desks.map((d) => {
+        const [fx, fz] = flatAt([d.x + d.w * 0.2, d.y - d.h * 0.2]);
+        return new THREE.Matrix4().compose(new THREE.Vector3(fx, 0.78, fz), new THREE.Quaternion(), new THREE.Vector3(1.1, 1, 1.1));
+    }), group);
+    pools.castShadow = false;
+    pools.receiveShadow = false;
+    pools.renderOrder = 4;
+};
 const buildFurniture = (group, plan) => {
     const by = (type) => plan.furniture.filter((f) => f.t === type);
-    const top = material(0xf3efe6);
-    const dark = material(0x22343a);
-    const fabric = material(0x0f5564);
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const top = material(0xf4f3ef);
+    const wood = material(0x8f6239);
+    const dark = material(0x2a2a2a);
+    const seat = material(0x262626);
+    const white = material(0xf1f1ee);
+    const blue = material(0x2f7f8e);
     const ceramic = material(0xf7f7f4);
     const leaf = new THREE.MeshStandardMaterial({ color: 0x3f7d55, roughness: 1, flatShading: true });
+    const inKitchen = (f) => insideRect(f, plan.kitchen);
     const desks = by('desk');
-    if (desks.length) {
-        instanced(new THREE.BoxGeometry(1, 1, 1), top, desks.map((d) => boxMatrix(d.x, d.y, d.w, d.h, 0.05, 0.72)), group);
-        instanced(new THREE.BoxGeometry(1, 1, 1), dark, desks.flatMap((d) => [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]].map(([ox, oy]) => boxMatrix(d.x + d.w * ox, d.y + d.h * oy, 3, 3, 0.72))), group);
-    }
+    const tables = desks.filter((d) => d.wood || inKitchen(d));
+    const officeDesks = desks.filter((d) => !tables.includes(d));
+    if (officeDesks.length) instanced(box, top, officeDesks.map((d) => boxMatrix(d.x, d.y, d.w, d.h, 0.05, 0.72)), group);
+    if (tables.length) instanced(box, wood, tables.map((d) => boxMatrix(d.x, d.y, d.w, d.h, 0.05, 0.72)), group);
+    if (desks.length) instanced(box, dark, desks.flatMap((d) => [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]].map(([ox, oy]) => boxMatrix(d.x + d.w * ox, d.y + d.h * oy, 3, 3, 0.72))), group);
     const chairs = by('chair');
-    if (chairs.length) {
-        instanced(new THREE.BoxGeometry(1, 1, 1), fabric, chairs.map((c) => boxMatrix(c.x, c.y, 22, 22, 0.08, 0.42)), group);
-        instanced(new THREE.BoxGeometry(1, 1, 1), dark, chairs.map((c) => boxMatrix(c.x, c.y, 4, 4, 0.42)), group);
-        instanced(new THREE.BoxGeometry(1, 1, 1), fabric, chairs.map((c) => {
-            const rad = (c.a * Math.PI) / 180;
-            return boxMatrix(c.x + Math.sin(rad) * 10, c.y + Math.cos(rad) * 10, Math.abs(Math.cos(rad)) * 22 + 4, Math.abs(Math.sin(rad)) * 22 + 4, 0.42, 0.5);
+    // a chair faces away from its back; on an office desk in front of it stands a screen, turned to it
+    const back = (c) => [Math.sin((c.a * Math.PI) / 180), Math.cos((c.a * Math.PI) / 180)];
+    const screens = chairs.flatMap((c) => {
+        const [bx, by2] = back(c);
+        const at = { x: c.x - bx * 34, y: c.y - by2 * 34 };
+        const desk = officeDesks.find((d) => Math.abs(at.x - d.x) < d.w / 2 && Math.abs(at.y - d.y) < d.h / 2);
+        if (!desk || Math.max(desk.w, desk.h) > 110) return [];
+        return [boxMatrix(at.x, at.y, Math.abs(bx) * 2 + Math.abs(by2) * 22, Math.abs(by2) * 2 + Math.abs(bx) * 22, 0.3, 0.77)];
+    });
+    if (screens.length) instanced(box, dark, screens, group);
+    buildDeskLamps(group, officeDesks.filter((d) => Math.max(d.w, d.h) <= 110));
+    for (const [list, mat] of [[chairs.filter((c) => !inKitchen(c)), seat], [chairs.filter(inKitchen), white]]) {
+        if (!list.length) continue;
+        instanced(box, mat, list.map((c) => boxMatrix(c.x, c.y, 22, 22, 0.08, 0.42)), group);
+        instanced(box, dark, list.map((c) => boxMatrix(c.x, c.y, 4, 4, 0.42)), group);
+        instanced(box, mat, list.map((c) => {
+            const [bx, by2] = back(c);
+            return boxMatrix(c.x + bx * 10, c.y + by2 * 10, Math.abs(by2) * 22 + 4, Math.abs(bx) * 22 + 4, 0.42, 0.5);
         }), group);
+    }
+    const armchairs = by('armchair');
+    if (armchairs.length) {
+        instanced(box, blue, armchairs.map((c) => boxMatrix(c.x, c.y, 34, 34, 0.42)), group);
+        instanced(box, blue, armchairs.map((c) => {
+            const [bx, by2] = back(c);
+            return boxMatrix(c.x + bx * 14, c.y + by2 * 14, Math.abs(by2) * 34 + 6, Math.abs(bx) * 34 + 6, 0.36, 0.42);
+        }), group);
+    }
+    const counters = by('counter');
+    if (counters.length) {
+        instanced(box, white, counters.map((c) => boxMatrix(c.x, c.y, c.w, c.h, 0.86)), group);
+        instanced(box, material(0x8d8b86), counters.map((c) => boxMatrix(c.x, c.y, c.w, c.h, 0.04, 0.86)), group);
     }
     const ovals = by('oval');
     if (ovals.length) {
-        instanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 40), top, ovals.map((o) => {
+        instanced(new THREE.CylinderGeometry(0.5, 0.5, 1, 40), wood, ovals.map((o) => {
             const [fx, fz] = flatAt([o.x, o.y]);
             return new THREE.Matrix4().compose(new THREE.Vector3(fx, 0.75, fz), new THREE.Quaternion().setFromAxisAngle(UP, planAngle()), new THREE.Vector3(o.w * metresPerPixel(STEP_PX, 0), 0.05, o.h * metresPerPixel(0, STEP_PX)));
         }), group);
         instanced(new THREE.BoxGeometry(1, 1, 1), dark, ovals.map((o) => boxMatrix(o.x, o.y, 8, 40, 0.72)), group);
     }
     const cabinets = by('cabinet');
-    if (cabinets.length) instanced(new THREE.BoxGeometry(1, 1, 1), material(0xddd5c4), cabinets.map((c) => boxMatrix(c.x, c.y, c.w, c.h, 1.5)), group);
+    if (cabinets.length) instanced(box, wood, cabinets.map((c) => boxMatrix(c.x, c.y, c.w, c.h, 1.4)), group);
     const plants = by('plant');
     if (plants.length) {
         instanced(new THREE.CylinderGeometry(0.2, 0.15, 0.36, 14), material(0xb9694a), plants.map((p) => boxMatrixAt(p, 0.18)), group);
@@ -1659,6 +1765,100 @@ const buildFurniture = (group, plan) => {
     const sinks = by('sink');
     if (sinks.length) instanced(new THREE.BoxGeometry(1, 1, 1), ceramic, sinks.map((s) => boxMatrix(s.x, s.y, 16, 24, 0.12, 0.78)), group);
 };
+/** The doors: every short gap between two lengths of wall on one line that is not a window,
+    with its leaf standing open into the room beside it, cut at the walls' height like everything else. */
+const DOOR_GAP_PX = [22, 70];
+const doorsOf = (plan, rooms) => {
+    const lines = new Map();
+    for (const [x1, y1, x2, y2] of plan.walls) {
+        const flat = Math.abs(y1 - y2) <= 3;
+        if (!flat && Math.abs(x1 - x2) > 3) continue;
+        const key = `${flat ? 'h' : 'v'}${Math.round((flat ? y1 : x1) / 6)}`;
+        const span = flat ? [Math.min(x1, x2), Math.max(x1, x2)] : [Math.min(y1, y2), Math.max(y1, y2)];
+        if (!lines.has(key)) lines.set(key, { flat, at: flat ? y1 : x1, spans: [] });
+        lines.get(key).spans.push(span);
+    }
+    const isWindow = (flat, at, from, to) => plan.windows.some(([x1, y1, x2, y2]) => (flat ? Math.abs(y1 - at) < 8 && Math.min(x1, x2) < to && Math.max(x1, x2) > from : Math.abs(x1 - at) < 8 && Math.min(y1, y2) < to && Math.max(y1, y2) > from));
+    const inRoom = (x, y) => rooms.some((room) => {
+        let inside = false;
+        const poly = room.shape;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            if (poly[i][1] > y !== poly[j][1] > y && x < ((poly[j][0] - poly[i][0]) * (y - poly[i][1])) / (poly[j][1] - poly[i][1]) + poly[i][0]) inside = !inside;
+        }
+        return inside;
+    });
+    const doors = [];
+    for (const { flat, at, spans } of lines.values()) {
+        spans.sort((p, q) => p[0] - q[0]);
+        for (let i = 1; i < spans.length; i++) {
+            const from = spans[i - 1][1];
+            const to = spans[i][0];
+            const gap = to - from;
+            if (gap < DOOR_GAP_PX[0] || gap > DOOR_GAP_PX[1] || isWindow(flat, at, from, to)) continue;
+            const mid = (from + to) / 2;
+            const probe = (s) => (flat ? inRoom(mid, at + s * gap * 0.7) : inRoom(at + s * gap * 0.7, mid));
+            doors.push({ flat, at, from, width: gap, side: probe(1) || !probe(-1) ? 1 : -1 });
+        }
+    }
+    return doors;
+};
+const buildDoors = (group, plan, rooms) => {
+    const doors = doorsOf(plan, rooms);
+    if (!doors.length) return;
+    // the leaf turns on its hinge at the gap's start and stands square to the wall, into the room
+    instanced(new THREE.BoxGeometry(1, 1, 1), material(0x8b5a2f), doors.map((d) => (d.flat
+        ? boxMatrix(d.from + 1.5, d.at + (d.side * d.width) / 2, 3, d.width, WALL_HEIGHT - 0.04)
+        : boxMatrix(d.at + (d.side * d.width) / 2, d.from + 1.5, d.width, 3, WALL_HEIGHT - 0.04))), group);
+};
+
+/** The stair in the stair wing: a U of two flights and a landing, cut like the walls. Up from this floor on the
+    near half until the cut. On the far half, the flight that comes up from the floor below: only its top steps,
+    in a short shaft lined with walls, so nothing of it shows outside the building below the slab. */
+const STAIR_STEPS = 9; // each flight
+const STAIR_LANDING = 0.32; // of the stair's length, at its far end
+const STAIR_SHAFT_STEPS = 5; // how many steps of the flight from below show in its shaft
+const stairShape = ([x0, y0, x1, y1]) => {
+    const mid = (y0 + y1) / 2;
+    const land = x1 - (x1 - x0) * STAIR_LANDING;
+    const tread = (land - x0) / STAIR_STEPS;
+    const rise = floorHeight() / 2 / STAIR_STEPS;
+    // the flights keep a hand's width off the walls
+    return { mid, land, tread, rise, half: mid - y0 - 6, shaft: [x0 + tread, mid + 2, x0 + tread * (STAIR_SHAFT_STEPS + 1), y1 - 4] };
+};
+const stairOpening = (rect) => {
+    const [a, b, c, d] = stairShape(rect).shaft;
+    return [[a, b], [c, b], [c, d], [a, d]];
+};
+const buildStairs = (group, rect, fromBelow) => {
+    const [x0, y0] = rect;
+    const { mid, tread, rise, half, shaft } = stairShape(rect);
+    const steps = [];
+    // well under the walls' cut, so no step stands proud of the walls round it
+    for (let i = 0; i < STAIR_STEPS; i++) {
+        const top = rise * (i + 1);
+        if (top > WALL_HEIGHT - 0.25) break;
+        steps.push(boxMatrix(x0 + tread * (i + 0.5), (y0 + 4 + mid) / 2 - 1.5, tread, half, top));
+    }
+    if (fromBelow) {
+        // the flight from below arrives at this floor at the near end; going away from it, each step one rise lower
+        const depth = rise * STAIR_SHAFT_STEPS + 0.12;
+        for (let k = 1; k <= STAIR_SHAFT_STEPS; k++) {
+            steps.push(boxMatrix(x0 + tread * (k + 0.5), (shaft[1] + shaft[3]) / 2, tread, shaft[3] - shaft[1], depth - rise * k, -depth));
+        }
+        // the shaft: its walls from its floor up to the slab, and its floor
+        const [a, b, c, d] = shaft;
+        const lining = material(0xf6f2e9);
+        instanced(new THREE.BoxGeometry(1, 1, 1), lining, [[a, b, c, b], [c, b, c, d], [c, d, a, d], [a, d, a, b]].map((seg) => segmentMatrix(seg, 0.06, depth + 0.04, -depth)), group);
+        group.add(new THREE.Mesh(planGeometry([[a, b], [c, b], [c, d], [a, d]], -depth), material(0x9c9993)));
+    }
+    // every other step a shade darker, so from above the flight reads as steps and not as a ramp
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    instanced(box, material(0xc6c3bc), steps.filter((_, i) => i % 2 === 0), group);
+    instanced(box, material(0xaeaba4), steps.filter((_, i) => i % 2 === 1), group);
+};
+const stairsRect = () => PLANS3D[3].stairs;
+const DIVIDING_WALLS_PX = [[1165, 85, 1165, 735]];
+
 const boxMatrixAt = (p, y) => {
     const [fx, fz] = flatAt([p.x, p.y]);
     return new THREE.Matrix4().makeTranslation(fx, y, fz);
@@ -1671,10 +1871,16 @@ const buildPlate = (floor) => {
     group.position.y = y;
     const inner = new THREE.Group();
     group.add(inner);
-    const plate = new THREE.Mesh(planGeometry(PLAN_OUTLINE_PX, 0.06), material(0xc7c2b6));
+    const plan = PLANS3D[floor.level];
+    // the floor below is open to this one through the stairwell
+    const fromBelow = floor.level > 1;
+    const plate = new THREE.Mesh(planGeometry(PLAN_OUTLINE_PX, 0.06, fromBelow ? [stairOpening(plan?.stairs ?? stairsRect())] : []), plan ? material(0xffffff, { map: tileTexture() }) : material(0xc7c2b6));
     plate.receiveShadow = true;
     group.add(plate);
-    const plan = PLANS3D[floor.level];
+    buildStairs(inner, plan?.stairs ?? stairsRect(), fromBelow);
+    // on the side of the neighbouring building the opened floor stands open to the gap between the two:
+    // a wall the storey's full height closes it
+    instanced(new THREE.BoxGeometry(1, 1, 1), material(0xf6f2e9), DIVIDING_WALLS_PX.map((w) => segmentMatrix(w, 0.22, floorHeight() - 0.05)), inner);
     const wallMat = material(0xf6f2e9);
     const walls = plan ? plan.walls : OUTER_WALLS;
     const THICK = 0.2;
@@ -1683,16 +1889,17 @@ const buildPlate = (floor) => {
         instanced(new THREE.BoxGeometry(1, 1, 1), wallMat, plan.windows.map((w) => segmentMatrix(w, THICK, SILL)), inner);
         instanced(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xbfe0e6, transparent: true, opacity: 0.4, roughness: 0.2 }), plan.windows.map((w) => segmentMatrix(w, 0.05, WALL_HEIGHT - SILL, SILL)), inner).castShadow = false;
         buildFurniture(inner, plan);
+        buildDoors(inner, plan, floor.rooms);
     }
-    const wood = material(0xffffff, { map: woodTexture() });
+    const wood = material(0xffffff, { map: plan ? carpetTexture() : woodTexture() });
     for (const room of floor.rooms) {
         const free = room.status === 'volno';
         const floorMesh = new THREE.Mesh(planGeometry(room.shape, 0.09), wood);
         floorMesh.receiveShadow = true;
         group.add(floorMesh);
-        const tint = new THREE.Mesh(planGeometry(room.shape, 0.11), new THREE.MeshBasicMaterial({ color: free ? COLORS.free : COLORS.taken, transparent: true, opacity: free ? 0.3 : 0.34, side: THREE.DoubleSide, depthWrite: false }));
+        const tint = new THREE.Mesh(planGeometry(room.shape, 0.11), new THREE.MeshBasicMaterial({ color: free ? COLORS.free : COLORS.taken, transparent: true, opacity: free ? 0.3 : 0.16, side: THREE.DoubleSide, depthWrite: false }));
         tint.renderOrder = 3;
-        tint.userData = { room, key: `room-${room.id}`, base: free ? 0.3 : 0.34 };
+        tint.userData = { room, key: `room-${room.id}`, base: free ? 0.3 : 0.16 };
         group.add(tint);
     }
     // every material may fade, so all are transparent from the start; at full opacity they draw as before
@@ -1701,6 +1908,19 @@ const buildPlate = (floor) => {
         node.material = node.material.clone();
         node.material.transparent = true;
         node.material.userData.base = node.material.opacity;
+    });
+    // indoors nothing casts or catches the sun's shadows, and everything glows a little of its own colour:
+    // the floor is lit evenly and brightly, as an office is and as the client's 3D plans show it
+    group.traverse((node) => {
+        if (!node.isMesh) return;
+        node.castShadow = false;
+        node.receiveShadow = false;
+        const m = node.material;
+        if (!m.isMeshStandardMaterial || m.emissive.getHex()) return;
+        if (m.map) {
+            m.emissiveMap = m.map;
+            m.emissive.setScalar(INDOOR_GLOW);
+        } else m.emissive.copy(m.color).multiplyScalar(INDOOR_GLOW);
     });
     group.userData.inner = inner;
     inner.scale.y = 0.001;
@@ -1870,9 +2090,14 @@ const GYM_HIDDEN = -0.6;
 const GYM_GROW_MS = 1400;
 const GYM_MIN_DISTANCE = 9;
 const GYM_SETTLE_MS = 1200; // long enough for a sort of the lighter scan on a slow phone
-const GYM_CTA_HEIGHT = 2.6; // the button floats just above the walls, over the gym's middle
+const GYM_CTA_HEIGHT = 3.3; // the button floats just above the filled storey, over the gym's middle
+// the solid walls stand well back from the scanned wall faces, so the scan's own surface stays in front
+// and the solid only fills where the scan is see-through: a partition is a thin core in its middle,
+// an outer wall stands outside the scanned one
+const PARTITION_CORE = 0.02;
+const OUTER_GAP = 0.02;
 const GYM_CTA_HIDE_MS = 220; // the pointer may cross a gap between the model and the button
-const gym = { group: null, mesh: null, cta: null, top: null, loading: null, ready: false, failed: false, progress: 0, hover: false, overCta: false, tapped: false, hideTimer: 0, outline: null, middle: null, settleUntil: 0 };
+const gym = { group: null, mesh: null, cta: null, top: null, loading: null, ready: false, failed: false, progress: 0, hover: false, overCta: false, tapped: false, hideTimer: 0, outline: null, middle: null, settleUntil: 0, shell: null, shellLoading: null };
 // a phone gets the lighter scan: fewer splats and simpler colour
 const gymFile = () => (matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory ?? 8) <= 4 ? GYM.splat.lite : GYM.splat.full);
 
@@ -1887,8 +2112,9 @@ const placeGym = () => {
     const [dx, dz] = planDown();
     const group = new THREE.Group();
     group.rotation.y = Math.atan2(-(rz * Math.cos(turn) + dz * Math.sin(turn)), rx * Math.cos(turn) + dx * Math.sin(turn));
+    group.scale.setScalar(GYM.splat.scale ?? 1);
     const [cx, cz] = pxToFlat(GYM.splat.at);
-    const offset = gym.middle.clone().applyQuaternion(group.quaternion);
+    const offset = gym.middle.clone().multiplyScalar(GYM.splat.scale ?? 1).applyQuaternion(group.quaternion);
     // just above the floor plate, so the plate does not show through the scanned floor
     group.position.set(cx - offset.x, floorBase(1) + 0.08, cz - offset.z);
     group.visible = false;
@@ -1906,10 +2132,11 @@ const placeGym = () => {
 const gymView = () => {
     const toWorld = (x, y, z) => gym.group.localToWorld(new THREE.Vector3(x, y, z)).toArray();
     const { x, z } = gym.middle;
-    // from the side of the plan's bottom edge, so the model reads the way the plan beside it does;
+    // from the car park, the side of the entrance (the plan's left edge, -u);
     // a phone held upright sees little sideways, and fitted() would only take it a little closer
     const k = isNarrow() && $('stage').clientWidth < $('stage').clientHeight ? 0.8 : 1;
-    return { pos: toWorld(x, 30 * k, z + 26 * k), target: toWorld(x, 0.6, z + 0.8) };
+    // steep enough to see over the filled storey into the gym's rooms
+    return { pos: toWorld(x - 20 * k, 39 * k, z), target: toWorld(x - 0.6, 0.6, z) };
 };
 
 /** While the scan loads, and if it fails, the panel says so; the viewer works either way. */
@@ -1929,18 +2156,25 @@ const loadGym = () => {
         spark.renderOrder = 10;
         scene.add(spark);
         gym.top = dyno.dynoFloat(GYM_HIDDEN);
+        // the building's main body in the gym's metres (the two are square to each other; the stair wing is left out,
+        // it reaches past the front): haze the scan caught beyond the building's walls is dropped
+        const box = gymBody().expandByScalar(-0.02);
+        const bounds = dyno.dynoVec4(new THREE.Vector4(box.min.x, box.min.z, box.max.x, box.max.z));
         // per splat on the GPU, in the gym's own metres: whatever is above the cut fades out,
         // so the gym grows from its floor, and seen from above it has no ceiling
         const cut = dyno.dynoBlock({ gsplat: dyno.Gsplat }, { gsplat: dyno.Gsplat }, ({ gsplat }) => {
             const d = new dyno.Dyno({
-                inTypes: { gsplat: dyno.Gsplat, top: 'float' },
+                inTypes: { gsplat: dyno.Gsplat, top: 'float', bounds: 'vec4' },
                 outTypes: { gsplat: dyno.Gsplat },
                 statements: ({ inputs, outputs }) => dyno.unindentLines(`
                     ${outputs.gsplat} = ${inputs.gsplat};
-                    ${outputs.gsplat}.rgba.a *= 1.0 - smoothstep(${inputs.top} - 0.12, ${inputs.top}, ${inputs.gsplat}.center.y);
+                    vec3 p = ${inputs.gsplat}.center;
+                    vec4 b = ${inputs.bounds};
+                    float within = step(b.x, p.x) * step(p.x, b.z) * step(b.y, p.z) * step(p.z, b.w);
+                    ${outputs.gsplat}.rgba.a *= within * (1.0 - smoothstep(${inputs.top} - 0.12, ${inputs.top}, p.y));
                 `),
             });
-            return { gsplat: d.apply({ gsplat, top: gym.top }).gsplat };
+            return { gsplat: d.apply({ gsplat, top: gym.top, bounds }).gsplat };
         });
         const mesh = new SplatMesh({
             url: gymFile(),
@@ -1979,7 +2213,204 @@ const gymCutTo = (target, ms) => {
     });
 };
 
+/* the solid storey around the scan: walls and floors in the scan's colours, and the rest of the ground floor filled */
+
+/** The outline moved out by d, edge by edge (a plain offset: the gym's walls meet at right angles). */
+const offsetOutline = (poly, d) => {
+    let area = 0;
+    poly.forEach(([x, y], i) => { const [x2, y2] = poly[(i + 1) % poly.length]; area += x * y2 - x2 * y; });
+    const out = area > 0 ? 1 : -1;
+    const edges = poly.map((p, i) => {
+        const q = poly[(i + 1) % poly.length];
+        const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+        const n = [(out * (q[1] - p[1])) / l, (-out * (q[0] - p[0])) / l];
+        return { p: [p[0] + n[0] * d, p[1] + n[1] * d], dir: [(q[0] - p[0]) / l, (q[1] - p[1]) / l], n };
+    });
+    return edges.map((e, i) => {
+        const prev = edges[(i + edges.length - 1) % edges.length];
+        const cross = prev.dir[0] * e.dir[1] - prev.dir[1] * e.dir[0];
+        // a straight run through this corner: just move the corner out
+        if (Math.abs(cross) < 1e-6) return e.p;
+        const t = ((e.p[0] - prev.p[0]) * e.dir[1] - (e.p[1] - prev.p[1]) * e.dir[0]) / cross;
+        return [prev.p[0] + prev.dir[0] * t, prev.p[1] + prev.dir[1] * t];
+    });
+};
+
+/** Each room's floor as a picture of the room map: its own colour where the room is, see-through elsewhere. */
+const roomFloor = (data, index, colour) => {
+    const { cols, rows, cell, origin } = data;
+    const pixels = new Uint8Array(cols * rows * 4);
+    const hex = parseInt(colour.slice(1), 16);
+    const rgb = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255, 255];
+    let i = 0;
+    for (const run of data.grid.split(',')) {
+        if (!run) continue;
+        const room = run[0];
+        const n = +run.slice(1);
+        for (let k = 0; k < n; k++, i++) {
+            if (room !== String(index)) continue;
+            // the texture's first row is the plane's far edge (largest v), so rows go in from the bottom
+            const r = rows - 1 - Math.floor(i / cols);
+            const at = (r * cols + (i % cols)) * 4;
+            pixels.set(rgb, at);
+        }
+    }
+    const map = new THREE.DataTexture(pixels, cols, rows);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.magFilter = THREE.NearestFilter;
+    map.needsUpdate = true;
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(cols * cell, rows * cell).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map, alphaTest: 0.5, side: THREE.DoubleSide }));
+    plane.position.set(origin[0] + (cols * cell) / 2, 0, origin[1] + (rows * cell) / 2);
+    return plane;
+};
+
+/** The building's main body (without the stair wing) in the gym's metres. */
+const gymBody = () => {
+    const box = new THREE.Box3();
+    for (const px of PLAN_BODY_PX) {
+        const [x, z] = pxToFlat(px);
+        box.expandByPoint(gym.group.worldToLocal(new THREE.Vector3(x, gym.group.position.y, z)));
+    }
+    return box;
+};
+
+/** The gym's outline at its outer walls' outer faces, with a passage from each door in an outer wall
+    through the filled storey to the building's face, so the entrance stays open. */
+const gymOpening = () => {
+    const ring = offsetOutline(gym.outline, WALL_OUTER_HALF);
+    const outer = gymData.walls.filter(isOuterWall);
+    let area = 0;
+    gym.outline.forEach(([x, y], i) => { const [x2, y2] = gym.outline[(i + 1) % gym.outline.length]; area += x * y2 - x2 * y; });
+    const out = area > 0 ? 1 : -1;
+    const body = gymBody();
+    const passages = new Map();
+    for (const door of (gymData.openings ?? []).filter((o) => outer.some((w) => w.id === o.wall))) {
+        const i = outer.findIndex((w) => w.id === door.wall);
+        const w = outer[i];
+        const l = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
+        const d = [(w.b[0] - w.a[0]) / l, (w.b[1] - w.a[1]) / l];
+        const n = [out * d[1], -out * d[0]];
+        const start = (ring[i][0] - w.a[0]) * d[0] + (ring[i][1] - w.a[1]) * d[1];
+        const at = (s) => [ring[i][0] + d[0] * (s - start), ring[i][1] + d[1] * (s - start)];
+        const p0 = at(door.offset - door.width / 2);
+        const p1 = at(door.offset + door.width / 2);
+        // to the face of the building, square to it: the gym and the building are square to each other
+        const reach = Math.abs(n[0]) > 0.5 ? (n[0] > 0 ? body.max.x - p0[0] : p0[0] - body.min.x) : (n[1] > 0 ? body.max.z - p0[1] : p0[1] - body.min.z);
+        const far = Math.max(0, reach - 0.03);
+        passages.set(i, [p0, [p0[0] + n[0] * far, p0[1] + n[1] * far], [p1[0] + n[0] * far, p1[1] + n[1] * far], p1]);
+    }
+    return ring.flatMap((p, i) => [p, ...(passages.get(i) ?? [])]);
+};
+
+const buildGymShell = (data) => {
+    const scale = GYM.splat.scale ?? 1;
+    const base = floorBase(1);
+    const height = floorHeight();
+    const shell = new THREE.Group();
+    shell.position.y = base;
+    // see-through: the storey reads as a volume around the gym without hiding anything
+    const fillMat = material(0xf6f2e9, { transparent: true, opacity: 0.22, depthWrite: false });
+    // the ground floor filled to the storey's height, with the gym's outline (to its walls' outer faces) left open
+    const hole = gymOpening().map(([u, v]) => {
+        const p = gym.group.localToWorld(new THREE.Vector3(u, 0, v));
+        return new THREE.Vector2(p.x, -p.z);
+    });
+    const outline = new THREE.Shape(PLAN_OUTLINE_PX.map((px) => { const [x, z] = pxToFlat(px); return new THREE.Vector2(x, -z); }));
+    outline.holes.push(new THREE.Path(hole));
+    // the stair wing stays open for its stair
+    outline.holes.push(new THREE.Path(STAIR_WELL_PX().map((px) => { const [x, z] = pxToFlat(px); return new THREE.Vector2(x, -z); })));
+    const fill = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: height - 0.06, bevelEnabled: false }).rotateX(-Math.PI / 2), fillMat);
+    fill.position.y = 0.06;
+    fill.castShadow = true;
+    fill.receiveShadow = true;
+    shell.add(fill);
+    // walls and floors in the gym's own metres, placed and turned as the scan is
+    const inner = new THREE.Group();
+    inner.position.set(gym.group.position.x, gym.group.position.y - base, gym.group.position.z);
+    inner.quaternion.copy(gym.group.quaternion);
+    inner.scale.setScalar(scale);
+    shell.add(inner);
+    const top = (height - inner.position.y) / scale;
+    const bottom = -0.05;
+    const faceMat = new Map();
+    const face = (hex) => {
+        if (!hex) return fillMat;
+        // half see-through and drawn before the scan, so the scan is never hidden: the walls only colour in behind it
+        if (!faceMat.has(hex)) faceMat.set(hex, new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.55, depthWrite: false }));
+        return faceMat.get(hex);
+    };
+    // shift: how far the box's middle stands off the wall's centre line, towards side 0 (the left of a -> b)
+    const box = (from, to, a, d, thick, shift, y0, y1, mats) => {
+        const len = to - from;
+        if (len < 0.02) return;
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, y1 - y0, thick), mats);
+        mesh.position.set(a[0] + d[0] * (from + len / 2) - d[1] * shift, (y0 + y1) / 2, a[1] + d[1] * (from + len / 2) + d[0] * shift);
+        mesh.rotation.y = Math.atan2(-d[1], d[0]);
+        inner.add(mesh);
+    };
+    gymData.walls.forEach((wall, k) => {
+        const spec = data.walls[k];
+        const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]);
+        if (!spec || length < 0.02) return;
+        const d = [(wall.b[0] - wall.a[0]) / length, (wall.b[1] - wall.a[1]) / length];
+        // box faces: +x, -x, top, bottom, then +z (the left of a -> b, side 0) and -z (side 1)
+        const mats = [fillMat, fillMat, fillMat, fillMat, face(spec.sides[0]), face(spec.sides[1])];
+        const outerWall = isOuterWall(wall);
+        // an outer wall's scan is on its inner side; the solid stands outside it, up to the outer face
+        const outward = spec.sides[0] ? -1 : 1;
+        const thick = outerWall ? WALL_OUTER_HALF - OUTER_GAP : PARTITION_CORE;
+        const shift = outerWall ? outward * (OUTER_GAP + thick / 2) : 0;
+        // outer walls run on past their ends, so the corners outside the scan close
+        const reach = outerWall ? WALL_OUTER_HALF : 0;
+        const gaps = (gymData.openings ?? []).filter((o) => o.wall === wall.id).map((o) => [o.offset - o.width / 2, o.offset + o.width / 2]).sort((p, q) => p[0] - q[0]);
+        let from = -reach;
+        for (const [g0, g1] of gaps) {
+            box(from, g0, wall.a, d, thick, shift, bottom, top, mats);
+            // over the doorway, the wall carries on
+            box(g0, g1, wall.a, d, thick, shift, DOOR_TOP, top, mats);
+            from = Math.max(from, g1);
+        }
+        box(from, length + reach, wall.a, d, thick, shift, bottom, top, mats);
+    });
+    // under the scan's floor, each room's own: a little lower, so the scanned floor stays on top
+    data.rooms.forEach((room, index) => {
+        if (!room.floor) return;
+        const plane = roomFloor(data, index, room.floor);
+        plane.position.y = room.level - 0.03;
+        inner.add(plane);
+    });
+    shell.scale.y = 0.001;
+    shell.visible = false;
+    scene.add(shell);
+    gym.shell = shell;
+};
+const WALL_OUTER_HALF = 0.13; // half the outer walls' thickness in the plan
+// the stair's footprint, a little larger, left open in the gym's filled storey
+const STAIR_WELL_PX = () => { const [x0, y0, x1, y1] = stairsRect(); return [[x0 - 8, y0 - 6], [x1 + 6, y0 - 6], [x1 + 6, y1 + 6], [x0 - 8, y1 + 6]]; };
+const DOOR_TOP = 2.05;
+
+const loadGymShell = () => {
+    gym.shellLoading ??= fetch(GYM.splat.shell).then((r) => r.json()).then(buildGymShell).catch((err) => console.error(err));
+    return gym.shellLoading;
+};
+
+/** The solid storey grows with the opened floor, and sinks again with it. */
+const growGymShell = (to, ms) => {
+    const shell = gym.shell;
+    if (!shell) return;
+    const from = shell.scale.y;
+    shell.visible = true;
+    animate(ms, (e) => {
+        shell.scale.y = Math.max(0.001, from + (to - from) * e);
+    }, () => {
+        shell.visible = to > 0.01;
+    });
+};
+
 const showGym = () => {
+    loadGymShell().then(() => {
+        if (mode === 'gym') growGymShell(1, GYM_GROW_MS);
+    });
     loadGym().then(() => {
         if (mode === 'gym') gymCutTo(GYM_ROOFLESS, GYM_GROW_MS);
     });
@@ -1992,6 +2423,7 @@ const leaveGym = () => {
     gym.tapped = false;
     showGymCta();
     gymCutTo(GYM_HIDDEN, CLOSE_MS);
+    growGymShell(0, CLOSE_MS);
 };
 
 const insideGymOutline = (u, v) => {
@@ -2606,7 +3038,7 @@ const initScene = async () => {
     // a shared link or a floor's page leads straight to its view
     if (location.hash) setTimeout(() => route(location.hash), reducedMotion ? 0 : 400);
     if (SPLAT_GYM && gymData) placeGym();
-    window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal, gym };
+    window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal, gym, pxToFlat, floorBase };
 };
 
 /* ---------- 3D tour ---------- */

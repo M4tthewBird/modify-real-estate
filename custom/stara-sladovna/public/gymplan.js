@@ -10,19 +10,30 @@ const node = (tag, attrs) => {
     return n;
 };
 
+export const isOuterWall = (wall) => wall.id <= OUTER_LAST_ID;
+
 /** The gym's outer outline in plan metres, as [u, v] corners in order. */
 export const gymOutline = (data) => data.walls.filter((w) => w.id <= OUTER_LAST_ID).map((w) => w.a);
 
-export const gymPlanSvg = (data, rooms, onPick) => {
+/** turn: degrees the drawing turns by (a multiple of 90; negative turns it anticlockwise), so it can read the way
+    the model beside it is seen. The names of the rooms stay upright. */
+export const gymPlanSvg = (data, rooms, onPick, turn = 0) => {
     const svg = document.createElementNS(SVG, 'svg');
-    const points = data.walls.flatMap((w) => [w.a, w.b]);
+    const a = (turn * Math.PI) / 180;
+    const rot = ([x, y]) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+    const points = data.walls.flatMap((w) => [w.a, w.b]).map(rot);
     const us = points.map((p) => p[0]);
     const vs = points.map((p) => p[1]);
-    svg.setAttribute('viewBox', `${Math.min(...us) - PAD} ${Math.min(...vs) - PAD} ${Math.max(...us) - Math.min(...us) + PAD * 2} ${Math.max(...vs) - Math.min(...vs) + PAD * 2}`);
+    // turned on its side, room names along the narrow rooms need more room to the left and right
+    const padX = PAD + (turn % 180 ? 0.7 : 0);
+    svg.setAttribute('viewBox', `${Math.min(...us) - padX} ${Math.min(...vs) - PAD} ${Math.max(...us) - Math.min(...us) + padX * 2} ${Math.max(...vs) - Math.min(...vs) + PAD * 2}`);
     svg.setAttribute('role', 'group');
     svg.setAttribute('aria-label', 'Půdorys privátního gymu');
+    // the walls and doors in the plan's own metres, turned as a whole
+    const drawing = node('g', { transform: `rotate(${turn})` });
+    svg.append(drawing);
     const outline = gymOutline(data).map((p) => p.join(',')).join(' ');
-    svg.append(node('polygon', { points: outline, class: 'gym-floor' }));
+    drawing.append(node('polygon', { points: outline, class: 'gym-floor' }));
     for (const wall of data.walls) {
         const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]) || 1;
         const gaps = (data.openings ?? []).filter((o) => o.wall === wall.id).map((o) => [o.offset - o.width / 2, o.offset + o.width / 2]).sort((p, q) => p[0] - q[0]);
@@ -43,7 +54,7 @@ export const gymPlanSvg = (data, rooms, onPick) => {
             line.setAttribute('x2', x2);
             line.setAttribute('y2', y2);
             line.setAttribute('class', wall.id <= OUTER_LAST_ID ? 'gym-wall gym-wall-outer' : 'gym-wall');
-            svg.append(line);
+            drawing.append(line);
         }
         // a door that closes: its leaf standing open and the arc it sweeps
         for (const o of (data.openings ?? []).filter((d) => d.wall === wall.id && !d.passage)) {
@@ -54,8 +65,8 @@ export const gymPlanSvg = (data, rooms, onPick) => {
             const [nx, ny] = [-dy * (o.side ?? 1), dx * (o.side ?? 1)];
             const [ex, ey] = [hx + dx * sign * o.width, hy + dy * sign * o.width];
             const [lx, ly] = [hx + nx * o.width, hy + ny * o.width];
-            svg.append(node('line', { x1: hx, y1: hy, x2: lx, y2: ly, class: 'gym-door' }));
-            svg.append(node('path', { d: `M ${lx} ${ly} A ${o.width} ${o.width} 0 0 ${(o.side ?? 1) * sign > 0 ? 0 : 1} ${ex} ${ey}`, class: 'gym-door gym-swing' }));
+            drawing.append(node('line', { x1: hx, y1: hy, x2: lx, y2: ly, class: 'gym-door' }));
+            drawing.append(node('path', { d: `M ${lx} ${ly} A ${o.width} ${o.width} 0 0 ${(o.side ?? 1) * sign > 0 ? 0 : 1} ${ex} ${ey}`, class: 'gym-door gym-swing' }));
         }
     }
     rooms.forEach((room, index) => {
@@ -76,12 +87,13 @@ export const gymPlanSvg = (data, rooms, onPick) => {
                 }
             });
         }
+        const [x, y] = rot([spot.u, spot.v]);
         // a finger-sized target round the two short lines of text
-        g.append(node('circle', { cx: spot.u, cy: spot.v + 0.1, r: 0.9, class: 'gym-hit' }));
+        g.append(node('circle', { cx: x, cy: y + 0.1, r: 0.9, class: 'gym-hit' }));
         for (const [text, dy, cls] of [[room.name, -0.06, 'gym-name'], [room.area, 0.34, 'gym-area']]) {
             const t = document.createElementNS(SVG, 'text');
-            t.setAttribute('x', spot.u);
-            t.setAttribute('y', spot.v + dy);
+            t.setAttribute('x', x);
+            t.setAttribute('y', y + dy);
             t.setAttribute('class', cls);
             t.textContent = text;
             g.append(t);
