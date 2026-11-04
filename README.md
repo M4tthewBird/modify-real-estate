@@ -36,16 +36,16 @@ Vlastní interaktivní stránka je na http://localhost:4180/stara-sladovna/ a je
 
 ## Stará Sladovna, gym ve 3D
 
-Druhá verze stránky na http://localhost:4180/stara-sladovna-gym-threejs/, zdroj v `custom/stara-sladovna-gym-threejs/`. Je to kopie Staré Sladovny (stav ze značky `stara-sladovna-v1`), jen privátní gym je místo odkazu do vieweru náš 3D sken (gaussian splaty) přímo v modelu. Původní stránka v `custom/stara-sladovna/` zůstává beze změny; úpravy, které mají platit pro obě, je potřeba udělat v obou.
+Druhá verze stránky na http://localhost:4180/stara-sladovna-gym-threejs/: privátní gym je místo fotek a odkazu do vieweru náš 3D sken (gaussian splaty) přímo v modelu. Obě stránky mají jeden kód v `custom/stara-sladovna/public/`. Stránka s gymem je jen `custom/stara-sladovna-gym-threejs/public/index.html`, kopie `index.html` původní stránky s `<body data-gym="splat">` a cestami do `../stara-sladovna/`. Úprava se tak projeví na obou; když se změní `index.html` původní stránky, je potřeba stejně upravit i tuhle kopii. Kód podle `SPLAT_GYM` v `app.js` rozhoduje jen o gymu, zbytek je společný. Soubory si skript bere podle svého umístění (`asset()` v `app.js`, `here()` v `data.js`), ne podle adresy stránky
 
-- Po otevření 1. NP vyroste gym na desce přízemí bez stropu. Tlačítkem „Vstoupit dovnitř“, kliknutím na podlahu nebo na místnost v půdorysu se do něj vejde, tažením se rozhlíží a v půdorysu je vidět, kde návštěvník stojí. Plný viewer zůstává jako odkaz „Celá prohlídka ve vieweru“
-- Vykresluje ho [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180 ve `public/vendor/`. Spark a sken se stahují, až když někdo gym otevře. Telefon dostane `gym-lite.sog` (750 tisíc splatů, 11,6 MB), počítač `gym.sog` (1,7 milionu, 27 MB)
+- Po otevření 1. NP vyroste gym na desce přízemí bez stropu. Je to jen pohled shora, ukázka, jak gym vypadá. Po najetí myší na gym se nad ním objeví tlačítko „Projít model“, které otevře prohlídku ve Scanity vieweru; na telefonu ho ukáže první klepnutí na gym a druhé prohlídku otevře. Stejné tlačítko je v panelu a na telefonu v liště pod modelem
+- Vykresluje ho [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180 v `custom/stara-sladovna/public/vendor/`. Spark a sken se stahují, až když někdo gym otevře. Telefon dostane `gym-lite.sog` (750 tisíc splatů, 11,6 MB), počítač `gym.sog` (1,7 milionu, 27 MB)
 - Kde gym v přízemí stojí, určují `GYM.splat.at` a `turn` v `public/data.js`. Zatím je to odhad, skutečné místo je potřeba potvrdit
-- `build-gym.mjs <sken.sog>`: ze skenu ze Scanity Studia vyrobí oba soubory v `public/gym/`, otočené do metrů půdorysu `gym/plan.json` a oříznuté podle obrysu gymu. Zdrojový sken je ve `Webovky/Podpurne soubory/` a do gitu nepatří
+- `custom/stara-sladovna/build-gym.mjs <sken.sog>`: ze skenu ze Scanity Studia vyrobí oba soubory v `public/gym/`, otočené do metrů půdorysu `gym/plan.json` a oříznuté podle obrysu gymu. Zdrojový sken je ve `Webovky/Podpurne soubory/` a do gitu nepatří
 
 ## Barák
 
-Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zdroj v `custom/barak/public/`. Model `barak.sog` vykresluje [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180, které má stránka ve `vendor/` vlastní. Stará Sladovna běží na 0.170, její verze s gymem ve 3D na 0.180.
+Zkušební stránka s Gaussian splat modelem na http://localhost:4180/barak/, zdroj v `custom/barak/public/`. Model `barak.sog` vykresluje [Spark](https://sparkjs.dev) (MIT) nad three.js 0.180, které má stránka ve `vendor/` vlastní. Stará Sladovna také na 0.180, se svou kopií ve `custom/stara-sladovna/public/vendor/`.
 
 - Části domu (přízemí, auto, střecha) jsou krabice v `PARTS` v `app.js`, změřené z dat modelu. Zvýraznění počítá shader ve Sparku, kliknutí chytají neviditelné krabice
 - Model je od autora zevlman ze superspl.at pod licencí CC BY 4.0, uvedení autora v patičce musí zůstat

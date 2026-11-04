@@ -10,6 +10,9 @@ const node = (tag, attrs) => {
     return n;
 };
 
+/** The gym's outer outline in plan metres, as [u, v] corners in order. */
+export const gymOutline = (data) => data.walls.filter((w) => w.id <= OUTER_LAST_ID).map((w) => w.a);
+
 export const gymPlanSvg = (data, rooms, onPick) => {
     const svg = document.createElementNS(SVG, 'svg');
     const points = data.walls.flatMap((w) => [w.a, w.b]);
@@ -18,7 +21,7 @@ export const gymPlanSvg = (data, rooms, onPick) => {
     svg.setAttribute('viewBox', `${Math.min(...us) - PAD} ${Math.min(...vs) - PAD} ${Math.max(...us) - Math.min(...us) + PAD * 2} ${Math.max(...vs) - Math.min(...vs) + PAD * 2}`);
     svg.setAttribute('role', 'group');
     svg.setAttribute('aria-label', 'Půdorys privátního gymu');
-    const outline = data.walls.filter((w) => w.id <= OUTER_LAST_ID).map((w) => w.a.join(',')).join(' ');
+    const outline = gymOutline(data).map((p) => p.join(',')).join(' ');
     svg.append(node('polygon', { points: outline, class: 'gym-floor' }));
     for (const wall of data.walls) {
         const length = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]) || 1;
@@ -73,6 +76,8 @@ export const gymPlanSvg = (data, rooms, onPick) => {
                 }
             });
         }
+        // a finger-sized target round the two short lines of text
+        g.append(node('circle', { cx: spot.u, cy: spot.v + 0.1, r: 0.9, class: 'gym-hit' }));
         for (const [text, dy, cls] of [[room.name, -0.06, 'gym-name'], [room.area, 0.34, 'gym-area']]) {
             const t = document.createElementNS(SVG, 'text');
             t.setAttribute('x', spot.u);

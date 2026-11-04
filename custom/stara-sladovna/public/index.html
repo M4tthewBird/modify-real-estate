@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://viewer.scanity.cz">
   <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }</script>
 </head>
 <body>
   <header class="top">
@@ -52,7 +52,8 @@
         </div>
         <p class="stage-error" id="stageError" hidden>3D model se v tomto prohlížeči nepodařilo zobrazit. Kanceláře si můžete vybrat v seznamu.</p>
       </div>
-      <aside class="panel" id="panel" aria-live="polite"></aside>
+      <aside class="panel" id="panel" aria-label="Výběr v modelu"></aside>
+      <p class="sr-only" id="announce" role="status"></p>
     </section>
 
     <section class="section" id="areal">

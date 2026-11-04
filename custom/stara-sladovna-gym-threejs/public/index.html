@@ -12,10 +12,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://viewer.scanity.cz">
   <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }</script>
+  <link rel="stylesheet" href="../stara-sladovna/style.css">
+  <script type="importmap">{ "imports": { "three": "../stara-sladovna/vendor/three.module.min.js", "three/addons/": "../stara-sladovna/vendor/addons/" } }</script>
 </head>
-<body>
+<!-- Stará Sladovna with the private gym as our 3D scan in the model. Everything but this file is in ../stara-sladovna/. -->
+<body data-gym="splat">
   <header class="top">
     <a href="/" class="top-logo logo" aria-label="MODIFY real estate, úvodní stránka"><b>MODIFY</b><small>real estate</small></a>
     <nav class="top-nav" aria-label="Hlavní">
@@ -47,12 +48,13 @@
         <div class="stage-foot">
           <p class="stage-hint" id="hint">Kolečkem přiblížíte, tažením otočíte</p>
         <a class="scanity-mark" href="https://scanity.cz" target="_blank" rel="noopener" aria-label="3D model vytvořil Scanity">
-          <img src="scanity_logo.svg" alt="" height="22"><span>Scanity</span>
+          <img src="../stara-sladovna/scanity_logo.svg" alt="" height="22"><span>Scanity</span>
         </a>
         </div>
         <p class="stage-error" id="stageError" hidden>3D model se v tomto prohlížeči nepodařilo zobrazit. Kanceláře si můžete vybrat v seznamu.</p>
       </div>
-      <aside class="panel" id="panel" aria-live="polite"></aside>
+      <aside class="panel" id="panel" aria-label="Výběr v modelu"></aside>
+      <p class="sr-only" id="announce" role="status"></p>
     </section>
 
     <section class="section" id="areal">
@@ -108,7 +110,7 @@
   <dialog class="tour" id="tour" aria-labelledby="tourTitle">
     <div class="tour-frame" id="tourFrame"></div>
     <div class="tour-cover" id="tourCover">
-      <img id="tourPoster" src="gym/04-gym.webp" alt="">
+      <img id="tourPoster" src="../stara-sladovna/gym/04-gym.webp" alt="">
       <div class="tour-status">
         <h2 id="tourTitle" tabindex="-1" autofocus></h2>
         <div class="tour-bar" aria-hidden="true"><span></span></div>
@@ -122,6 +124,6 @@
     </button>
   </dialog>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="../stara-sladovna/app.js"></script>
 </body>
 </html>

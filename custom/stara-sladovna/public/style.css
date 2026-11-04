@@ -38,6 +38,8 @@ h1, h2, h3 { margin: 0; line-height: 1.12; text-wrap: balance; }
 h1 { font-family: var(--head); font-weight: 600; text-transform: uppercase; }
 h2 { font: 600 clamp(30px, 4vw, 42px)/1.12 var(--head); text-transform: uppercase; color: var(--petrol); }
 h3 { font: 600 20px/1.3 var(--body); }
+/* read aloud, not shown */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .kicker { margin: 0 0 10px; color: var(--honey-deep); font-size: 15px; font-weight: 500; letter-spacing: .04em; }
 .section-dark .kicker { color: var(--honey-light); }
 
@@ -466,7 +468,7 @@ body[data-theme="dusk"] .scanity-mark img { filter: brightness(0) invert(1); }
 .plan-card-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 12px 20px; }
 .plan-card-head div { flex: 1; }
 .plan-card-head p { margin: 0 0 2px; color: var(--honey-deep); font-size: 13px; font-weight: 500; letter-spacing: .04em; }
-.plan-card-head h2 { color: var(--petrol); font-size: 26px; }
+.plan-card-title { margin: 0; font: 600 26px/1.12 var(--head); text-transform: uppercase; color: var(--petrol); }
 .plan-card-count { margin-right: 6px; padding: 4px 9px; background: var(--honey-light); color: var(--ink); font-size: 13px; font-weight: 600; }
 .plan-card-icon { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); background: none; color: var(--petrol); transition: border-color .2s, background .2s; }
 .plan-card-icon:hover { border-color: var(--honey); background: var(--paper); }
@@ -501,6 +503,31 @@ body[data-theme="dusk"] .scanity-mark img { filter: brightness(0) invert(1); }
 .gym-area { font: 400 .24px var(--body); fill: #6b6b6b; transition: fill .2s; }
 .gym-room:hover .gym-name, .gym-room.is-active .gym-name, .gym-room:focus-visible .gym-name { fill: var(--honey-deep); }
 .gym-room.is-active .gym-area { fill: var(--honey-deep); }
+/* over the scanned gym, while the pointer is on it: the way into the full 3D tour */
+.gym-cta {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 20px;
+  border: 0;
+  background: var(--honey-deep);
+  color: var(--white);
+  font-size: 15.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: auto;
+  box-shadow: 0 10px 26px rgb(0 0 0 / 34%);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility 0s .2s, background .2s;
+}
+.gym-cta.is-visible { opacity: 1; visibility: visible; transition: opacity .2s, background .2s; }
+.gym-cta:hover, .gym-cta:focus-visible { background: var(--petrol); }
+.gym-load { color: var(--scene-soft); font-size: 14px; }
 
 /* The floor's own page */
 .page-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--petrol); color: var(--white); }
@@ -706,7 +733,59 @@ main.floor-main { padding-top: 36px; padding-bottom: 88px; }
   .form-two { grid-template-columns: 1fr; }
 }
 
+/* On a phone the panel sits under the model, so the place and its next step ride along the model's bottom edge,
+   in reach of a thumb. The general-information link gives way to it there. */
+.stage-bar { display: none; }
+.gym-hit { fill: transparent; }
+@media (max-width: 1000px) {
+  .stage-bar:not([hidden]) {
+    position: absolute;
+    z-index: 3;
+    left: 16px;
+    right: 84px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 56px;
+    padding: 0 6px 0 16px;
+    background: var(--white);
+    color: var(--petrol);
+    box-shadow: 0 10px 26px rgb(0 0 0 / 30%);
+  }
+  .stage:has(.stage-bar:not([hidden])) .more { display: none; }
+  .stage-bar-text { flex: 1; min-width: 0; margin: 0; display: grid; gap: 1px; }
+  .stage-bar-text strong, .stage-bar-text span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .stage-bar-text strong { font: 600 19px/1.1 var(--head); text-transform: uppercase; }
+  .stage-bar-text span { color: var(--ink-soft); font-size: 14px; line-height: 1.25; }
+  .stage-bar > button:not(.btn) { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); background: none; color: var(--petrol); }
+  .stage-bar > button:not(.btn):disabled { opacity: .3; }
+  .stage-bar .btn { flex: none; display: flex; align-items: center; height: 44px; padding: 0 13px; font-size: 15px; white-space: nowrap; }
+  .stage-foot { height: 56px; min-width: 56px; justify-content: center; padding: 0; }
+  .more { height: 56px; bottom: 16px; }
+  .plan-card-head p, .plan-card-count, .plan-card-foot, .legend, .floor-row-text small { font-size: 14px; }
+}
+
+/* a finger needs about 44 px, whatever the picture shows */
+@media (pointer: coarse) {
+  .theme-switch button { min-height: 44px; }
+  .pin::after { content: ""; position: absolute; inset: -6px -3px; }
+  .plan-card-icon, .floor-step button { width: 44px; height: 44px; }
+  .contact-links a { padding: 9px 0; }
+  .panel .text-link { display: inline-block; padding: 10px 0; }
+  .scanity-mark { min-width: 44px; justify-content: center; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  * { transition: none !important; animation: none !important; }
+  /* nothing travels, grows or loops; colour and opacity still change, briefly, so hover and picks stay visible.
+     The 3D model jumps to each view instead of flying (reducedMotion in app.js) */
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: color, background-color, border-color, opacity, fill, stroke !important;
+    transition-duration: .15s !important;
+  }
+  /* the loading bar holds still, half lit, instead of running */
+  .tour-bar span { animation: none !important; width: 100%; opacity: .5; }
 }

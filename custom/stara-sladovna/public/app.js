@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { OrbitControls } from './vendor/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONTACT, FLOORS, GYM, SAMPLE_DATA, VIEWER_URL, ZONES, floorPage } from './data.js';
-import { gymPlanSvg } from './gymplan.js';
+import { gymOutline, gymPlanSvg } from './gymplan.js';
 import { paintFacade } from './facades.js';
 import { OUTER_WALLS, PLANS3D } from './floorplans.js';
 
@@ -12,6 +12,10 @@ const el = (tag, props = {}, ...children) => {
     return node;
 };
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// the gym as our own scan in the model (stara-sladovna-gym-threejs), or as photos and a link to the viewer (this page)
+const SPLAT_GYM = document.body.dataset.gym === 'splat';
+// files next to this script, whichever page loaded it
+const asset = (path) => new URL(path, import.meta.url).href;
 const isNarrow = () => window.matchMedia('(max-width: 1000px)').matches;
 
 const ICONS = {
@@ -21,6 +25,7 @@ const ICONS = {
     plan: 'M3 4h18v16H3zM3 12h9M12 4v8M16 12v8',
     expand: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
     minus: 'M6 12h12',
+    walk: 'M15 4h5v16h-5M10 8l4 4-4 4M14 12H3',
 };
 const icon = (name, size = 16) => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -125,6 +130,9 @@ const CLOSE_MS = 700; // the building grows back from the cut, it does not fall 
 const FLOOR_SWITCH_MS = 950; // one storey away or back
 const SWITCH_LIFT = 16; // how far the storey above flies off
 const ROOF_CLEAR = 12; // above the eave, so the sweep that closes a floor passes the whole roof
+const MIN_DISTANCE = 22;
+const MAX_DISTANCE = 430;
+const limits = { min: MIN_DISTANCE, max: MAX_DISTANCE };
 const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1313, 735], [1313, 925], [945, 925], [945, 690], [125, 690]];
 
 let manifest = null;
@@ -174,7 +182,18 @@ const goUp = () => {
     const steps = trail();
     if (steps.length > 1) steps[steps.length - 2].go();
 };
+/** One short line for a screen reader after each move: where you are now, and what is there. */
+const announcer = $('announce');
+const announce = () => {
+    const steps = trail();
+    let text = steps[steps.length - 1].label;
+    if (mode === 'floor' && pickedRoom) text += `, ≈ ${String(pickedRoom.area).replace('.', ',')} m², ${pickedRoom.status}`;
+    else if (mode === 'floor') text += `, ${floorSummary(floorAt(openLevel))}`;
+    if (announcer.textContent !== text) announcer.textContent = text;
+};
+
 const renderCrumbs = () => {
+    announce();
     const steps = trail();
     crumbsNode.hidden = steps.length < 2;
     if (steps.length < 2) {
@@ -193,6 +212,36 @@ const renderCrumbs = () => {
         list.append(el('li', {}, node));
     });
     crumbsNode.replaceChildren(back, list);
+};
+
+/* ---------- on a phone: where you are and the next step, along the bottom of the model ---------- */
+
+const stageBar = el('div', { className: 'stage-bar', hidden: true });
+$('stage').append(stageBar);
+const barText = (title, text) => el('p', { className: 'stage-bar-text' }, el('strong', { textContent: title }), el('span', { textContent: text }));
+const renderStageBar = () => {
+    const items = [];
+    if (mode === 'floor') {
+        const floor = floorAt(openLevel);
+        const free = floor.rooms.filter((r) => r.status === 'volno').length;
+        const up = el('button', { type: 'button', ariaLabel: 'O patro výš', disabled: openLevel === 4 }, icon('up', 18));
+        const down = el('button', { type: 'button', ariaLabel: 'O patro níž' }, icon('down', 18));
+        up.addEventListener('click', () => stepFloor(1));
+        down.addEventListener('click', () => stepFloor(-1));
+        items.push(barText(floor.label, `${free} volné${SAMPLE_DATA ? ' (ukázka)' : ''}`), up, down);
+    } else if (mode === 'gym') {
+        if (!SPLAT_GYM) {
+            const tour = el('button', { type: 'button', className: 'btn', textContent: '3D prohlídka' });
+            tour.addEventListener('click', () => openTour(GYM.tour));
+            items.push(barText('1. NP', GYM.title), tour);
+        } else {
+            const walk = el('button', { type: 'button', className: 'btn' }, 'Projít model');
+            walk.addEventListener('click', () => openTour(GYM.tour));
+            items.push(barText('1. NP', GYM.title), walk);
+        }
+    }
+    stageBar.hidden = !items.length;
+    stageBar.replaceChildren(...items);
 };
 
 /* ---------- the browser's own back button walks the same trail ---------- */
@@ -387,7 +436,7 @@ const renderFloorPanel = () => {
     panel.replaceChildren(...children);
 };
 
-const gymPhotoUrl = (room) => `gym/${room.photo}.webp`;
+const gymPhotoUrl = (room) => asset(`gym/${room.photo}.webp`);
 const setGymPhoto = (index) => {
     gymPhoto = index;
     const room = GYM.rooms[index];
@@ -414,7 +463,8 @@ const frameView = () => {
     if (!isNarrow()) {
         const origin = stage.getBoundingClientRect().left;
         const left = panel.getBoundingClientRect().right - origin;
-        const card = planCard && !planCard.classList.contains('is-collapsed') ? planCard.getBoundingClientRect().left - origin : width;
+        const side = planCard ?? stage.querySelector('.gym-sheet');
+        const card = side && !side.classList.contains('is-collapsed') ? side.getBoundingClientRect().left - origin : width;
         shift = -((left + card) / 2 - width / 2);
     }
     camera.setViewOffset(width, height, shift, 0, width, height);
@@ -483,14 +533,15 @@ const showPlanCard = (floor) => {
     const free = floor.rooms.filter((r) => r.status === 'volno').length;
     planCard = el('section', { className: 'plan-card' },
         el('header', { className: 'plan-card-head' },
-            el('div', {}, el('p', { textContent: 'Půdorys' }), el('h2', { textContent: floor.label })),
+            // the panel's h1 already names the floor, so here it is a label, not a second heading
+            el('div', {}, el('p', { textContent: 'Půdorys' }), el('p', { className: 'plan-card-title', textContent: floor.label })),
             el('span', { className: 'plan-card-count', textContent: `${free} volné` }),
             large, toggle),
         el('div', { className: 'plan-card-body' }, svg),
         el('footer', { className: 'plan-card-foot' },
             el('span', { className: 'plan-key' }, el('i', { className: 'key-free' }), 'Volno'),
             el('span', { className: 'plan-key' }, el('i', { className: 'key-taken' }), 'Obsazeno'),
-            el('span', { className: 'plan-card-status', role: 'status' })));
+            el('span', { className: 'plan-card-status' })));
     planCard.setAttribute('aria-label', `Půdorys, ${floor.label}`);
     planCard.dataset.level = floor.level;
     // a wide screen has room beside the model; a narrow one shows the plan between the model and the panel
@@ -502,14 +553,30 @@ const showPlanCard = (floor) => {
 const renderGymPanel = () => {
     const thumbs = el('div', { className: 'thumbs' });
     GYM.rooms.forEach((room, i) => {
-        const b = el('button', { type: 'button', ariaLabel: room.name }, el('img', { src: `gym/thumb-${room.photo}.webp`, alt: '', loading: 'lazy' }));
+        const b = el('button', { type: 'button', ariaLabel: room.name }, el('img', { src: asset(`gym/thumb-${room.photo}.webp`), alt: '', loading: 'lazy' }));
         b.dataset.index = i;
         b.addEventListener('click', () => setGymPhoto(i));
         thumbs.append(b);
     });
+    const children = SPLAT_GYM ? gymSplatPanel(thumbs) : gymTourPanel(thumbs);
+    panel.replaceChildren(...children);
+    updateGymStatus();
+    removeGymSheet();
+    if (gymData) {
+        const sheet = el('div', { className: 'gym-sheet' }, gymPlanSvg(gymData, GYM.rooms, setGymPhoto));
+        // a wide screen has room for the plan beside the panel; a narrow one keeps it in the panel's flow
+        if (isNarrow()) panel.insertBefore(sheet, panel.querySelector('.panel-actions:last-child'));
+        else $('stage').append(sheet);
+    }
+    setGymPhoto(gymPhoto);
+    frameView();
+};
+
+/** Photos, our plan and the way into the viewer. */
+const gymTourPanel = (thumbs) => {
     const enter = el('button', { type: 'button', className: 'btn', textContent: 'Vstoupit do 3D prohlídky' });
     enter.addEventListener('click', () => openTour(GYM.tour));
-    const children = [
+    return [
         el('h1', { textContent: GYM.title }),
         el('p', { textContent: GYM.text }),
         el('img', { className: 'panel-photo', alt: '' }),
@@ -517,15 +584,22 @@ const renderGymPanel = () => {
         thumbs,
         el('div', { className: 'panel-actions' }, enter, el('a', { className: 'text-link', href: floorPage(1), textContent: 'Půdorys' })),
     ];
-    panel.replaceChildren(...children);
-    removeGymSheet();
-    if (gymData) {
-        const sheet = el('div', { className: 'gym-sheet' }, gymPlanSvg(gymData, GYM.rooms, setGymPhoto));
-        // a wide screen has room for the plan beside the panel; a narrow one keeps it in the panel's flow
-        if (isNarrow()) panel.insertBefore(sheet, panel.querySelector('.panel-actions'));
-        else $('stage').append(sheet);
-    }
-    setGymPhoto(gymPhoto);
+};
+
+/** The scan in the model shows the gym; the walk through it is the viewer's. */
+const gymSplatPanel = (thumbs) => {
+    const walk = el('button', { type: 'button', className: 'btn' }, 'Projít model');
+    walk.addEventListener('click', () => openTour(GYM.tour));
+    return [
+        el('h1', { textContent: GYM.title }),
+        el('p', { textContent: GYM.text }),
+        el('p', { className: 'gym-load', hidden: true }),
+        el('div', { className: 'panel-actions' }, walk),
+        el('img', { className: 'panel-photo', alt: '' }),
+        el('p', { className: 'photo-caption' }),
+        thumbs,
+        el('div', { className: 'panel-actions' }, el('a', { className: 'text-link', href: floorPage(1), textContent: 'Půdorys ve velkém formátu' })),
+    ];
 };
 
 const renderZonePanel = (key) => {
@@ -612,6 +686,7 @@ const viewOf = (name) => {
     const [cx, cz] = planCentre();
     const [dx, dz] = planDown();
     const [rx, rz] = planRight();
+    if (name === 'gym' && gym.group) return gymView();
     if (name === 'floors' || name === 'gym') return { pos: [cx + dx * 62 + rx * 26, 17, cz + dz * 62 + rz * 26], target: [cx, 8.5, cz] };
     // an open floor: from the side of the plan's bottom edge, so the plan reads upright, below the lifted roof
     const y = floorBase(openLevel ?? activeLevel);
@@ -625,16 +700,18 @@ const fitted = (view) => {
     return { pos: view.pos.map((n, i) => view.target[i] + (n - view.target[i]) * NARROW_DISTANCE), target: view.target };
 };
 
-const flyTo = (view, ms = 1400) => {
+const flyTo = (view, ms = 1400, done = null) => {
     const to = { pos: new THREE.Vector3(...view.pos), target: new THREE.Vector3(...view.target) };
     if (reducedMotion) {
+        flight = null;
         camera.position.copy(to.pos);
         controls.target.copy(to.target);
         controls.update();
         needsRender = true;
+        done?.();
         return;
     }
-    flight = { start: performance.now(), ms, from: { pos: camera.position.clone(), target: controls.target.clone() }, to };
+    flight = { start: performance.now(), ms, from: { pos: camera.position.clone(), target: controls.target.clone() }, to, done };
 };
 
 const material = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0, side: THREE.DoubleSide, ...extra });
@@ -1785,6 +1862,197 @@ const closeReveal = () => {
     });
 };
 
+/* ---------- the private gym: our own scan as gaussian splats, seen from above in the opened ground floor ---------- */
+// The scan only shows what the gym is like; walking through it is the viewer's job, one button away.
+
+const GYM_ROOFLESS = 2.3; // seen from above the gym has no ceiling, so its rooms read like the office plans
+const GYM_HIDDEN = -0.6;
+const GYM_GROW_MS = 1400;
+const GYM_MIN_DISTANCE = 9;
+const GYM_SETTLE_MS = 1200; // long enough for a sort of the lighter scan on a slow phone
+const GYM_CTA_HEIGHT = 2.6; // the button floats just above the walls, over the gym's middle
+const GYM_CTA_HIDE_MS = 220; // the pointer may cross a gap between the model and the button
+const gym = { group: null, mesh: null, cta: null, top: null, loading: null, ready: false, failed: false, progress: 0, hover: false, overCta: false, tapped: false, hideTimer: 0, outline: null, middle: null, settleUntil: 0 };
+// a phone gets the lighter scan: fewer splats and simpler colour
+const gymFile = () => (matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory ?? 8) <= 4 ? GYM.splat.lite : GYM.splat.full);
+
+/** The gym's group: its plan's middle on the client's office plan, its u axis turned from that plan's right. */
+const placeGym = () => {
+    gym.outline = gymOutline(gymData);
+    const us = gymData.walls.flatMap((w) => [w.a[0], w.b[0]]);
+    const vs = gymData.walls.flatMap((w) => [w.a[1], w.b[1]]);
+    gym.middle = new THREE.Vector3((Math.min(...us) + Math.max(...us)) / 2, 0, (Math.min(...vs) + Math.max(...vs)) / 2);
+    const turn = (GYM.splat.turn * Math.PI) / 180;
+    const [rx, rz] = planRight();
+    const [dx, dz] = planDown();
+    const group = new THREE.Group();
+    group.rotation.y = Math.atan2(-(rz * Math.cos(turn) + dz * Math.sin(turn)), rx * Math.cos(turn) + dx * Math.sin(turn));
+    const [cx, cz] = pxToFlat(GYM.splat.at);
+    const offset = gym.middle.clone().applyQuaternion(group.quaternion);
+    // just above the floor plate, so the plate does not show through the scanned floor
+    group.position.set(cx - offset.x, floorBase(1) + 0.08, cz - offset.z);
+    group.visible = false;
+    scene.add(group);
+    group.updateMatrixWorld();
+    gym.group = group;
+    const cta = el('button', { type: 'button', className: 'gym-cta' }, icon('walk', 18), 'Projít model');
+    cta.addEventListener('click', () => openTour(GYM.tour));
+    cta.addEventListener('pointerenter', () => { gym.overCta = true; showGymCta(); });
+    cta.addEventListener('pointerleave', () => { gym.overCta = false; showGymCta(); });
+    $('pins').append(cta);
+    gym.cta = cta;
+};
+
+const gymView = () => {
+    const toWorld = (x, y, z) => gym.group.localToWorld(new THREE.Vector3(x, y, z)).toArray();
+    const { x, z } = gym.middle;
+    // from the side of the plan's bottom edge, so the model reads the way the plan beside it does;
+    // a phone held upright sees little sideways, and fitted() would only take it a little closer
+    const k = isNarrow() && $('stage').clientWidth < $('stage').clientHeight ? 0.8 : 1;
+    return { pos: toWorld(x, 30 * k, z + 26 * k), target: toWorld(x, 0.6, z + 0.8) };
+};
+
+/** While the scan loads, and if it fails, the panel says so; the viewer works either way. */
+const updateGymStatus = () => {
+    const note = panel.querySelector('.gym-load');
+    if (!note) return;
+    note.hidden = gym.ready;
+    note.textContent = gym.failed ? '3D model gymu se nenačetl. Prohlídka ve vieweru funguje dál.' : `Načítám 3D model gymu, ${Math.round(gym.progress * 100)} %`;
+};
+
+/** Spark and the scan load only when someone opens the gym; the rest of the page never waits for them. */
+const loadGym = () => {
+    gym.loading ??= (async () => {
+        const { SparkRenderer, SplatMesh, dyno } = await import('./vendor/spark.module.min.js');
+        const spark = new SparkRenderer({ renderer });
+        // after the see-through floor plate, so the plate's walls behind the gym do not paint over it
+        spark.renderOrder = 10;
+        scene.add(spark);
+        gym.top = dyno.dynoFloat(GYM_HIDDEN);
+        // per splat on the GPU, in the gym's own metres: whatever is above the cut fades out,
+        // so the gym grows from its floor, and seen from above it has no ceiling
+        const cut = dyno.dynoBlock({ gsplat: dyno.Gsplat }, { gsplat: dyno.Gsplat }, ({ gsplat }) => {
+            const d = new dyno.Dyno({
+                inTypes: { gsplat: dyno.Gsplat, top: 'float' },
+                outTypes: { gsplat: dyno.Gsplat },
+                statements: ({ inputs, outputs }) => dyno.unindentLines(`
+                    ${outputs.gsplat} = ${inputs.gsplat};
+                    ${outputs.gsplat}.rgba.a *= 1.0 - smoothstep(${inputs.top} - 0.12, ${inputs.top}, ${inputs.gsplat}.center.y);
+                `),
+            });
+            return { gsplat: d.apply({ gsplat, top: gym.top }).gsplat };
+        });
+        const mesh = new SplatMesh({
+            url: gymFile(),
+            objectModifier: cut,
+            onProgress: (e) => {
+                if (!e.lengthComputable) return;
+                gym.progress = e.loaded / e.total;
+                updateGymStatus();
+            },
+        });
+        gym.group.add(mesh);
+        await mesh.initialized;
+        gym.mesh = mesh;
+        gym.ready = true;
+        updateGymStatus();
+        if (mode === 'gym') announcer.textContent = `${GYM.title}: 3D model je načtený`;
+    })().catch((err) => {
+        console.error(err);
+        gym.failed = true;
+        updateGymStatus();
+    });
+    updateGymStatus();
+    return gym.loading;
+};
+
+/** The cut height moves, and with it the gym grows from its floor or sinks back into it. */
+const gymCutTo = (target, ms) => {
+    if (!gym.ready) return;
+    const from = gym.top.value;
+    gym.group.visible = true;
+    animate(ms, (e) => {
+        gym.top.value = from + (target - from) * e;
+        gym.mesh.updateVersion();
+    }, () => {
+        gym.group.visible = target > GYM_HIDDEN;
+    });
+};
+
+const showGym = () => {
+    loadGym().then(() => {
+        if (mode === 'gym') gymCutTo(GYM_ROOFLESS, GYM_GROW_MS);
+    });
+};
+
+/** Out of the gym: the scan sinks into its floor with the rest of the storey. */
+const leaveGym = () => {
+    setGymHover(false);
+    gym.overCta = false;
+    gym.tapped = false;
+    showGymCta();
+    gymCutTo(GYM_HIDDEN, CLOSE_MS);
+};
+
+const insideGymOutline = (u, v) => {
+    let inside = false;
+    const poly = gym.outline;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [ui, vi] = poly[i];
+        const [uj, vj] = poly[j];
+        if (vi > v !== vj > v && u < ((uj - ui) * (v - vi)) / (vj - vi) + ui) inside = !inside;
+    }
+    return inside;
+};
+
+/** Whether the pointer's ray meets the gym's floor inside the gym's outline. */
+const overGym = () => {
+    if (!gym.ready || !gym.group.visible) return false;
+    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -gym.group.position.y);
+    const hit = raycaster.ray.intersectPlane(floor, new THREE.Vector3());
+    if (!hit) return false;
+    const local = gym.group.worldToLocal(hit);
+    return insideGymOutline(local.x, local.z);
+};
+
+/** The button shows while the pointer is on the gym or on the button itself, and lingers a moment between the two. */
+const showGymCta = () => {
+    if (!gym.cta) return;
+    clearTimeout(gym.hideTimer);
+    const on = mode === 'gym' && gym.ready && (gym.hover || gym.overCta || gym.tapped);
+    if (on) {
+        gym.cta.classList.add('is-visible');
+        placeGymCta();
+    }
+    else gym.hideTimer = setTimeout(() => gym.cta.classList.remove('is-visible'), GYM_CTA_HIDE_MS);
+};
+const setGymHover = (on) => {
+    if (gym.hover === on) return;
+    gym.hover = on;
+    document.body.classList.toggle('is-hovering', on);
+    showGymCta();
+};
+
+/** A tap on a phone has no hover before it: the first tap on the gym shows the button, the next one opens the tour.
+    A tap beside the gym puts the button away again. */
+const tapGym = (event, onGym) => {
+    if (!onGym) {
+        gym.tapped = false;
+        showGymCta();
+    } else if (event.pointerType === 'mouse' || gym.tapped) openTour(GYM.tour);
+    else {
+        gym.tapped = true;
+        showGymCta();
+    }
+};
+
+const placeGymCta = () => {
+    if (!gym.cta?.classList.contains('is-visible')) return;
+    const { clientWidth: w, clientHeight: h } = renderer.domElement;
+    const p = gym.group.localToWorld(new THREE.Vector3(gym.middle.x, GYM_CTA_HEIGHT, gym.middle.z)).project(camera);
+    gym.cta.style.transform = `translate(calc(${((p.x * 0.5 + 0.5) * w).toFixed(1)}px - 50%), calc(${((-p.y * 0.5 + 0.5) * h).toFixed(1)}px - 50%))`;
+};
+
 const pickRoom = (room, push = true) => {
     pickedRoom = room;
     renderFloorPanel();
@@ -1896,8 +2164,9 @@ const applyColors = () => {
             mesh.material.color.setHex(focused && !lit && !hallLit && !(isOffice && opened) ? COLORS.dim : COLORS.plain);
         }
     }
-    levelTarget.on = mode === 'floors' || mode === 'gym' ? 1 : 0;
-    if (mode === 'gym') levelTarget.level = 1;
+    const litGym = mode === 'gym' && !SPLAT_GYM;
+    levelTarget.on = mode === 'floors' || litGym ? 1 : 0;
+    if (litGym) levelTarget.level = 1;
     else if (mode === 'floors') levelTarget.level = activeLevel;
     for (const mesh of reveal.plate?.children ?? []) {
         if (!mesh.userData.room) continue;
@@ -1931,16 +2200,25 @@ const setHover = (key) => {
 };
 
 const goTo = (next, push = true) => {
-    const wasOpen = mode === 'floor';
-    const opens = next === 'floor';
+    // the gym is on the ground floor however it is reached: its pin and the areal list come here without openFloor(1)
+    if (next === 'gym') {
+        activeLevel = 1;
+        levelTarget.level = 1;
+    }
+    // the scanned gym stands in the opened ground floor, so there it opens like a floor
+    const wasOpen = mode === 'floor' || (SPLAT_GYM && mode === 'gym');
+    const opens = next === 'floor' || (SPLAT_GYM && next === 'gym');
+    if (SPLAT_GYM && mode === 'gym' && next !== 'gym') leaveGym();
     mode = next;
     pickedRoom = null;
     dialNode = null;
     setHover(null);
     removeGymSheet();
-    if (!opens) removePlanCard();
+    if (next !== 'floor') removePlanCard();
     if (opens) openLevel = activeLevel;
     if (controls) controls.maxPolarAngle = opens ? OPEN_FLOOR_MAX_POLAR : MAX_POLAR;
+    limits.min = SPLAT_GYM && next === 'gym' ? GYM_MIN_DISTANCE : MIN_DISTANCE;
+    limits.max = MAX_DISTANCE;
     if (scene) {
         if (opens) openReveal(activeLevel);
         else if (wasOpen) closeReveal();
@@ -1951,7 +2229,10 @@ const goTo = (next, push = true) => {
         renderFloorPanel();
         showPlanCard(floorAt(openLevel));
     }
-    else if (next === 'gym') renderGymPanel();
+    else if (next === 'gym') {
+        renderGymPanel();
+        if (scene && SPLAT_GYM) showGym();
+    }
     else renderZonePanel(next);
     if (scene) {
         applyColors();
@@ -1959,6 +2240,7 @@ const goTo = (next, push = true) => {
         flyTo(fitted(viewOf(next)), wasOpen && !opens ? 1000 : 1500);
     }
     renderCrumbs();
+    renderStageBar();
     if (push) remember();
     if (isNarrow() && next !== 'overview') $('stage').scrollIntoView({ block: 'start' });
 };
@@ -1978,6 +2260,7 @@ const pick = (event) => {
         const level = Math.floor((hit.point.y - manifest.floors.base) / floorHeight()) + 1;
         return level >= 1 && level <= 4 ? `floor-${level}` : null;
     }
+    if (mode === 'gym') return overGym() ? 'gym-floor' : null;
     if (mode !== 'overview') return null;
     const hit = raycaster.intersectObjects(pickable)[0];
     return hit ? hit.object.userData.zone : null;
@@ -2074,9 +2357,9 @@ for (const b of document.querySelectorAll('[data-theme-set]')) {
 
 const initScene = async () => {
     const canvas = $('scene');
-    const [json, bin, gym] = await Promise.all([fetch('model.json').then((r) => r.json()), fetch('model.bin').then((r) => r.arrayBuffer()), fetch('gym/plan.json').then((r) => r.json()).catch(() => null)]);
+    const [json, bin, plan] = await Promise.all([fetch(asset('model.json')).then((r) => r.json()), fetch(asset('model.bin')).then((r) => r.arrayBuffer()), fetch(asset('gym/plan.json')).then((r) => r.json()).catch(() => null)]);
     manifest = json;
-    gymData = gym;
+    gymData = plan;
     const buffer = new Float32Array(bin);
     const { start, grid } = manifest.ground;
     groundHeights = buffer.subarray(start, start + grid * grid);
@@ -2103,8 +2386,8 @@ const initScene = async () => {
     controls.enableZoom = true;
     controls.zoomToCursor = true;
     controls.zoomSpeed = 0.9;
-    controls.minDistance = 22;
-    controls.maxDistance = 430;
+    controls.minDistance = MIN_DISTANCE;
+    controls.maxDistance = MAX_DISTANCE;
     controls.minPolarAngle = 0.2;
     controls.maxPolarAngle = MAX_POLAR;
     controls.addEventListener('change', () => { needsRender = true; });
@@ -2223,15 +2506,25 @@ const initScene = async () => {
             document.body.classList.add('is-hovering');
             return;
         }
-        if (mode === 'gym') return;
+        if (mode === 'gym') {
+            setGymHover(key === 'gym-floor');
+            return;
+        }
         if (mode === 'floors') document.body.classList.remove('is-hovering');
         setHover(key);
         if (key) showTip(key, e);
     });
-    canvas.addEventListener('pointerleave', () => setHover(null));
+    canvas.addEventListener('pointerleave', () => {
+        setHover(null);
+        setGymHover(false);
+    });
     canvas.addEventListener('click', (e) => {
         if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
         const key = pick(e);
+        if (SPLAT_GYM && mode === 'gym') {
+            tapGym(e, key === 'gym-floor');
+            return;
+        }
         if (!key) return;
         if (key.startsWith('floor-')) {
             const level = +key.slice(6);
@@ -2266,8 +2559,15 @@ const initScene = async () => {
             camera.position.lerpVectors(flight.from.pos, flight.to.pos, ease(t));
             controls.target.lerpVectors(flight.from.target, flight.to.target, ease(t));
             needsRender = true;
-            if (t === 1) flight = null;
+            if (t === 1) {
+                const { done } = flight;
+                flight = null;
+                done?.();
+            }
         }
+        // a flight passes closer and farther than the user may zoom, so the limits hold only between flights
+        controls.minDistance = flight ? 0 : limits.min;
+        controls.maxDistance = flight ? Infinity : limits.max;
         controls.update();
         runAnimations(now);
         const k = reducedMotion ? 1 : 1 - Math.exp(-dt / 130);
@@ -2288,10 +2588,15 @@ const initScene = async () => {
             stepWalker(now);
             needsRender = true;
         }
+        // the splats are sorted for the view in the background, so frames keep coming a moment after every move;
+        // a still view then stops drawing, which saves a phone's battery
+        if (needsRender) gym.settleUntil = now + GYM_SETTLE_MS;
+        if (gym.group?.visible && now < gym.settleUntil) needsRender = true;
         if (!needsRender || document.hidden) return;
         needsRender = false;
         renderer.render(scene, camera);
         placePins();
+        placeGymCta();
     };
     requestAnimationFrame(frame);
     canvas.classList.add('is-ready');
@@ -2300,7 +2605,8 @@ const initScene = async () => {
     // coming back from a floor's page, to that floor
     // a shared link or a floor's page leads straight to its view
     if (location.hash) setTimeout(() => route(location.hash), reducedMotion ? 0 : 400);
-    window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal };
+    if (SPLAT_GYM && gymData) placeGym();
+    window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal, gym };
 };
 
 /* ---------- 3D tour ---------- */
@@ -2333,7 +2639,7 @@ tourDialog.addEventListener('close', () => {
 
 const initPage = () => {
     const gallery = $('gallery');
-    fetch('model.json').then((r) => r.json()).then(({ photos }) => {
+    fetch(asset('model.json')).then((r) => r.json()).then(({ photos }) => {
         const offices = photos.filter((src) => /DSC_/.test(src)).slice(0, 9);
         // the second photo, with a furnished desk, makes the better large picture
         offices.splice(0, 2, offices[1], offices[0]);

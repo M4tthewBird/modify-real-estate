@@ -16,7 +16,10 @@ const rect = (x1, y1, x2, y2) => [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
 
 export const SAMPLE_DATA = true;
 
-export const floorPage = (level) => `patro.html?np=${level}`;
+// files next to this script, so a second page elsewhere (the gym in 3D) can use this one's
+const here = (path) => new URL(path, import.meta.url).href;
+
+export const floorPage = (level) => here(`patro.html?np=${level}`);
 
 export const VIEWER_URL = 'https://viewer.scanity.cz/?id=';
 
@@ -30,7 +33,11 @@ export const CONTACT = {
 export const GYM = {
     title: 'Privátní gym',
     text: 'Soukromý gym pro jednotlivce v přízemí budovy s kancelářemi, celkem 87,6 m².',
-    tour: { id: 'ikka_gym', title: 'Privátní gym', poster: 'gym/04-gym.webp' },
+    tour: { id: 'ikka_gym', title: 'Privátní gym', poster: here('gym/04-gym.webp') },
+    // Our scan as gaussian splats, already turned to the floor plan's metres (floor at 0, y up): see README.
+    // `at` is where the middle of the gym plan sits on the client's office plan in pixels, `turn` turns it there.
+    // Where the gym really is on the ground floor is still to be confirmed, these two numbers move it.
+    splat: { full: here('gym/gym.sog'), lite: here('gym/gym-lite.sog'), at: [520, 388], turn: 90 },
     // Room names and areas from our floor plan; photo is what opens when the room is picked.
     rooms: [
         { name: 'Gym', area: '44,5 m²', photo: '04-gym' },
