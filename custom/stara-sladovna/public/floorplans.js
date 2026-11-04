@@ -99,5 +99,24 @@ export const PLANS3D = {
     },
 };
 
+// The client's plans draw the stair wing some 2 m longer towards the car park and 0.7 m shorter to the east
+// than the building has it (Brno's model, model.json floors.polygons[1]). Its pixels are moved onto the
+// building's wing, so the stair and the wing's walls stand inside the wing seen from outside.
+// east and bottom: where each plan draws the wing's outer walls.
+export const WING = { core: 1165, top: 735, east: 1345, bottom: 876 };
+const fitWing = (plan, east, bottom) => {
+    const fit = (x, y) => [
+        x > WING.core && y >= WING.top - 1 ? WING.core + ((x - WING.core) * (WING.east - WING.core)) / (east - WING.core) : x,
+        y > WING.top && x >= 940 ? WING.top + ((y - WING.top) * (WING.bottom - WING.top)) / (bottom - WING.top) : y,
+    ];
+    const segment = ([x1, y1, x2, y2]) => [...fit(x1, y1), ...fit(x2, y2)];
+    plan.walls = plan.walls.map(segment);
+    plan.windows = plan.windows.map(segment);
+    plan.stairs = segment(plan.stairs);
+    for (const f of plan.furniture) [f.x, f.y] = fit(f.x, f.y);
+};
+fitWing(PLANS3D[3], 1313, 925);
+fitWing(PLANS3D[4], 1305, 920);
+
 // Floor 2 has no plan yet: only its outer walls are certain, and they are the same on every storey.
 export const OUTER_WALLS = PLANS3D[3].walls.slice(0, 19);

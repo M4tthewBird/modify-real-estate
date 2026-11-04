@@ -122,7 +122,7 @@ const themed = { glows: [] }; // what a change of the light has to touch
 
 const LIFT = 60; // far enough that the storeys above leave the view, and then they are hidden
 const WALL_HEIGHT = 1.5; // inside the opened floor: cut low, so the rooms stay readable
-const INDOOR_GLOW = 0.38; // how much an opened floor lights itself
+const INDOOR_GLOW = 0.16; // how much an opened floor lights itself: as under ceiling lights, not floodlit
 const SILL = 0.8;
 const OPEN_FLOOR_MAX_POLAR = 1.05; // an opened floor reads from above; lower, its walls hide the rooms
 const MAX_POLAR = 1.42;
@@ -134,7 +134,8 @@ const ROOF_CLEAR = 12; // above the eave, so the sweep that closes a floor passe
 const MIN_DISTANCE = 22;
 const MAX_DISTANCE = 430;
 const limits = { min: MIN_DISTANCE, max: MAX_DISTANCE };
-const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1313, 735], [1313, 925], [945, 925], [945, 690], [125, 690]];
+// the stair wing as the building has it (see WING in floorplans.js), not as the client's plans draw it
+const PLAN_OUTLINE_PX = [[148, 85], [1165, 85], [1165, 735], [1345, 735], [1345, 876], [945, 876], [945, 690], [125, 690]];
 const PLAN_BODY_PX = [[148, 85], [1165, 85], [1165, 690], [125, 690]]; // the outline without its stair wing
 
 let manifest = null;
@@ -1857,7 +1858,82 @@ const buildStairs = (group, rect, fromBelow) => {
     instanced(box, material(0xaeaba4), steps.filter((_, i) => i % 2 === 1), group);
 };
 const stairsRect = () => PLANS3D[3].stairs;
-const DIVIDING_WALLS_PX = [[1165, 85, 1165, 735]];
+// along the offices' side to the neighbouring building; opened, the floor looks into the gap between the two
+const DIVIDING_WALL_PX = [[1165, 85], [1165, 735]];
+const DIVIDING_SAMPLES = 40;
+
+/** A thin wall in the facades' colour over the gap to the neighbouring building, from the ground to that
+    building's own height along it, so it follows its roof. Shown only while a floor is open. */
+const buildDividingWall = (neighbours) => {
+    const ray = new THREE.Raycaster();
+    const [rx, rz] = planRight();
+    const top = [];
+    const ground = [];
+    const along = [];
+    for (let i = 0; i <= DIVIDING_SAMPLES; i++) {
+        const t = i / DIVIDING_SAMPLES;
+        const px = [DIVIDING_WALL_PX[0][0] + (DIVIDING_WALL_PX[1][0] - DIVIDING_WALL_PX[0][0]) * t, DIVIDING_WALL_PX[0][1] + (DIVIDING_WALL_PX[1][1] - DIVIDING_WALL_PX[0][1]) * t];
+        const [x, z] = pxToFlat(px);
+        // the neighbour's height a step or more beyond the line, where its walls and roof begin
+        let height = floorBase(2);
+        for (let d = 0.3; d <= 6; d += 0.3) {
+            ray.set(new THREE.Vector3(x + rx * d, 80, z + rz * d), new THREE.Vector3(0, -1, 0));
+            const hit = ray.intersectObjects(neighbours, false)[0];
+            if (hit && hit.point.y > floorBase(1)) {
+                height = hit.point.y;
+                break;
+            }
+        }
+        along.push([x, z]);
+        top.push(height);
+        ground.push(groundY(x, z) - 0.5);
+    }
+    const positions = [];
+    for (let i = 0; i < along.length - 1; i++) {
+        const [ax, az] = along[i];
+        const [bx, bz] = along[i + 1];
+        positions.push(ax, ground[i], az, bx, ground[i + 1], bz, bx, top[i + 1], bz, ax, ground[i], az, bx, top[i + 1], bz, ax, top[i], az);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    const wall = new THREE.Mesh(geometry, material(0xb59d79));
+    wall.visible = false;
+    scene.add(wall);
+    return wall;
+};
+let dividingWall = null;
+
+/** The rooms' light from above, as from ceiling lights: soft, cool panels of light on the floor. */
+const panelGlow = canvasTexture((c) => {
+    const g = c.createRadialGradient(256, 256, 20, 256, 256, 250);
+    g.addColorStop(0, 'rgba(255,253,245,0.26)');
+    g.addColorStop(0.5, 'rgba(255,252,240,0.10)');
+    g.addColorStop(1, 'rgba(255,250,235,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 512, 512);
+});
+const buildCeilingLights = (group, rooms) => {
+    if (!rooms.length) return;
+    const glow = new THREE.MeshBasicMaterial({ map: panelGlow(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const items = [];
+    for (const room of rooms) {
+        const xs = room.shape.map((p) => p[0]);
+        const ys = room.shape.map((p) => p[1]);
+        const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+        // one panel to every 4 m or so of the room's length, along its longer side
+        const long = x1 - x0 > y1 - y0;
+        const n = Math.max(1, Math.round(((long ? x1 - x0 : y1 - y0) * metresPerPixel(STEP_PX, 0)) / 4));
+        for (let k = 0; k < n; k++) {
+            const f = (k + 0.5) / n;
+            const at = long ? [x0 + (x1 - x0) * f, (y0 + y1) / 2] : [(x0 + x1) / 2, y0 + (y1 - y0) * f];
+            const [fx, fz] = flatAt(at);
+            items.push(new THREE.Matrix4().compose(new THREE.Vector3(fx, 0.12, fz), new THREE.Quaternion().setFromAxisAngle(UP, planAngle()), new THREE.Vector3(3.6, 1, 1.5)));
+        }
+    }
+    const panels = instanced(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), glow, items, group);
+    panels.renderOrder = 4;
+};
 
 const boxMatrixAt = (p, y) => {
     const [fx, fz] = flatAt([p.x, p.y]);
@@ -1878,9 +1954,7 @@ const buildPlate = (floor) => {
     plate.receiveShadow = true;
     group.add(plate);
     buildStairs(inner, plan?.stairs ?? stairsRect(), fromBelow);
-    // on the side of the neighbouring building the opened floor stands open to the gap between the two:
-    // a wall the storey's full height closes it
-    instanced(new THREE.BoxGeometry(1, 1, 1), material(0xf6f2e9), DIVIDING_WALLS_PX.map((w) => segmentMatrix(w, 0.22, floorHeight() - 0.05)), inner);
+    buildCeilingLights(group, floor.rooms);
     const wallMat = material(0xf6f2e9);
     const walls = plan ? plan.walls : OUTER_WALLS;
     const THICK = 0.2;
@@ -2654,6 +2728,7 @@ const goTo = (next, push = true) => {
     if (scene) {
         if (opens) openReveal(activeLevel);
         else if (wasOpen) closeReveal();
+        if (dividingWall) dividingWall.visible = opens;
     }
     if (next === 'overview') renderOverviewPanel();
     else if (next === 'floors') renderFloorsPanel();
@@ -3038,6 +3113,8 @@ const initScene = async () => {
     // a shared link or a floor's page leads straight to its view
     if (location.hash) setTimeout(() => route(location.hash), reducedMotion ? 0 : 400);
     if (SPLAT_GYM && gymData) placeGym();
+    // the neighbours' walls and roofs, the heights the dividing wall rises to
+    dividingWall = buildDividingWall([...zoneMeshes.hall.meshes, ...zoneMeshes.sal.meshes, themed.contextWall, themed.contextRoof].filter(Boolean));
     window.__sladovna = { setTheme, camera, controls, renderer, scene, setHover, goTo, openFloor, setActiveLevel, pins, reveal, gym, pxToFlat, floorBase };
 };
 
